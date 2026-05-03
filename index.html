@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1410" />
+<title>AH Estimating</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+  /* ================== THEME ================== */
+  :root {
+    --bg: #0f1410;
+    --bg-2: #161c18;
+    --bg-3: #1f2722;
+    --line: #2a332e;
+    --text: #e8efe9;
+    --text-2: #9aa89e;
+    --text-3: #6a7770;
+    --green: #7fff7f;
+    --green-dim: #5acc5a;
+    --green-bg: rgba(127, 255, 127, 0.08);
+    --red: #ff6b6b;
+    --red-bg: rgba(255, 107, 107, 0.1);
+    --amber: #ffd166;
+    --amber-bg: rgba(255, 209, 102, 0.1);
+    --blue: #6bb6ff;
+    --purple: #c47bff;
+    --purple-bg: rgba(196, 123, 255, 0.1);
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+  }
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+  input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    width: 100%;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--green-dim);
+  }
+
+  /* ================== TOP BAR ================== */
+  .top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+  }
+  .back-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .back-btn:hover { background: var(--line); }
+  .back-btn svg { width: 18px; height: 18px; stroke: var(--text); }
+  .top-title {
+    font-size: 17px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .top-actions { display: flex; gap: 8px; align-items: center; }
+  .icon-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--bg-3);
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: var(--line); }
+  .icon-btn svg { width: 18px; height: 18px; stroke: var(--text); }
+
+  /* ================== LAYOUT ================== */
+  .screen { min-height: 100vh; min-height: 100dvh; display: none; flex-direction: column; }
+  .screen.active { display: flex; }
+  .content { flex: 1; padding: 16px; }
+  .content-narrow { max-width: 720px; margin: 0 auto; width: 100%; }
+
+  /* ================== LOGIN SCREEN ================== */
+  #login-screen {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    background: radial-gradient(ellipse at top, rgba(127, 255, 127, 0.05), transparent 60%);
+  }
+  .login-logo {
+    width: 96px; height: 96px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-dim) 100%);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 24px;
+    color: var(--bg);
+    font-weight: 700;
+    font-size: 36px;
+    box-shadow: 0 8px 32px rgba(127, 255, 127, 0.25);
+  }
+  .login-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .login-sub {
+    color: var(--text-2);
+    font-size: 15px;
+    margin-bottom: 40px;
+    max-width: 320px;
+  }
+  .btn-primary {
+    background: var(--green);
+    color: var(--bg);
+    font-weight: 600;
+    padding: 14px 28px;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: transform 0.1s, box-shadow 0.15s;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .btn-primary:hover { box-shadow: 0 4px 16px rgba(127, 255, 127, 0.3); }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-secondary {
+    background: var(--bg-3);
+    color: var(--text);
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .btn-secondary:hover { background: var(--line); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ================== AWAITING AUTH SCREEN ================== */
+  #awaiting-screen {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  .awaiting-icon {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: var(--amber-bg);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .awaiting-icon svg { width: 40px; height: 40px; stroke: var(--amber); }
+
+  /* ================== JOBS LIST ================== */
+  .jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .job-card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .job-card:hover { border-color: var(--green-dim); }
+  .job-card:active { transform: scale(0.99); }
+  .job-code {
+    font-weight: 600;
+    color: var(--green);
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  .job-address {
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-2);
+  }
+  .empty-state-icon {
+    width: 64px; height: 64px;
+    margin: 0 auto 16px;
+    opacity: 0.4;
+  }
+
+  /* ================== ADMIN BANNER ================== */
+  .admin-banner {
+    background: var(--purple-bg);
+    border: 1px solid rgba(196, 123, 255, 0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--purple);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ================== USER MENU ================== */
+  .user-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-3);
+    border-radius: 18px;
+    padding: 4px 10px 4px 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .user-chip:hover { background: var(--line); }
+  .user-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--green);
+    color: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .user-name {
+    font-size: 13px;
+    color: var(--text-2);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ================== TOAST ================== */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 12px 20px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: var(--shadow);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    pointer-events: none;
+    max-width: 90vw;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.success { border-color: var(--green-dim); color: var(--green); }
+
+  /* ================== LOADING ================== */
+  .loading {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 60px 24px;
+    color: var(--text-2);
+    gap: 16px;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--bg-3);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ================== UTILITY ================== */
+  .hidden { display: none !important; }
+  .text-muted { color: var(--text-2); }
+  .text-small { font-size: 13px; }
+  .mt-8 { margin-top: 8px; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+</style>
+</head>
+<body>
+
+<!-- ============= LOGIN SCREEN ============= -->
+<div id="login-screen" class="screen active">
+  <div class="login-logo">AH</div>
+  <h1 class="login-title">AH Estimating</h1>
+  <p class="login-sub">Sign in with your Auzzie Homes account to manage RFQs and quotes.</p>
+  <button class="btn-primary" onclick="login()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+      <polyline points="10 17 15 12 10 7"/>
+      <line x1="15" y1="12" x2="3" y2="12"/>
+    </svg>
+    Sign In With Microsoft
+  </button>
+</div>
+
+<!-- ============= AWAITING AUTH SCREEN ============= -->
+<div id="awaiting-screen" class="screen">
+  <div class="awaiting-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  </div>
+  <h2 style="margin-bottom: 8px;">Awaiting Authorisation</h2>
+  <p class="text-muted" style="max-width: 320px; margin: 0 auto 24px;">
+    Your account <strong id="awaiting-email"></strong> is not authorised to use this app yet.
+    Please ask an admin to add you.
+  </p>
+  <button class="btn-secondary" onclick="logout()">Sign Out</button>
+</div>
+
+<!-- ============= JOBS LIST SCREEN ============= -->
+<div id="jobs-screen" class="screen">
+  <div class="top-bar">
+    <div class="login-logo" style="width: 32px; height: 32px; border-radius: 8px; font-size: 13px; margin: 0;">AH</div>
+    <div class="top-title">Jobs</div>
+    <div class="top-actions">
+      <div class="user-chip" onclick="toggleUserMenu()">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div class="user-name" id="user-name">...</div>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="content-narrow">
+      <div id="admin-banner" class="admin-banner hidden">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        Admin Mode
+      </div>
+      <div id="jobs-content">
+        <div class="loading">
+          <div class="spinner"></div>
+          <div>Loading Jobs...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============= TOAST ============= -->
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ============================================================
+// CONFIG
+// ============================================================
+const CONFIG = {
+  clientId: '07eef32f-8834-424d-b4fd-ad04c91a3fcf',
+  tenantId: 'ff968505-cca0-4cd1-9f6d-68ce6eaf06c7',
+  redirectUri: 'https://oskar617-cmyk.github.io/ah-estimating/',
+  // SharePoint paths
+  ahSitePath: 'auzziehomes.sharepoint.com:/sites/AHSite',
+  ahOfficePath: 'auzziehomes.sharepoint.com:/sites/AHOffice',
+  // Common Docs folder relative to AH Site Documents library
+  commonDocsPath: 'AAA Quote Common Docs',
+  // Job folder name pattern: jobs match "[code] Site Docs - [address]"
+  jobFolderPattern: /^(.+?)\s+Site\s+Docs\s+-\s+(.+)$/i,
+  // Authorised admins (hardcoded; full user list lives in estimating-config.json later)
+  hardcodedAdmins: ['oskar@auhs.com.au', 'est@auhs.com.au'],
+  // MS Graph scopes - what the app asks the user to consent to
+  scopes: [
+    'User.Read',
+    'Files.ReadWrite.All',
+    'Sites.ReadWrite.All',
+    'Mail.Send',
+    'Mail.Read',
+    'Mail.ReadWrite',
+    'Contacts.Read'
+  ]
+};
+
+// ============================================================
+// MSAL SETUP
+// ============================================================
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+    redirectUri: CONFIG.redirectUri,
+    navigateToLoginRequestUrl: false
+  },
+  cache: {
+    cacheLocation: 'localStorage',
+    storeAuthStateInCookie: false
+  }
+});
+
+let currentAccount = null;
+let currentUserEmail = null;
+let isAdmin = false;
+let cachedAhSiteId = null;
+
+// ============================================================
+// AUTH
+// ============================================================
+async function initAuth() {
+  try {
+    const response = await msalInstance.handleRedirectPromise();
+    if (response && response.account) {
+      msalInstance.setActiveAccount(response.account);
+    }
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      currentAccount = accounts[0];
+      msalInstance.setActiveAccount(currentAccount);
+      await onSignedIn();
+    }
+  } catch (err) {
+    console.error('Auth init error:', err);
+    showToast('Sign In Issue - Please Try Again', 'error');
+  }
+}
+
+async function login() {
+  try {
+    await msalInstance.loginRedirect({
+      scopes: CONFIG.scopes,
+      prompt: 'select_account'
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    showToast('Sign In Failed', 'error');
+  }
+}
+
+async function logout() {
+  try {
+    await msalInstance.logoutRedirect({ account: currentAccount });
+  } catch (err) {
+    console.error('Logout error:', err);
+  }
+}
+
+async function getToken() {
+  const request = { scopes: CONFIG.scopes, account: currentAccount };
+  try {
+    const result = await msalInstance.acquireTokenSilent(request);
+    return result.accessToken;
+  } catch (err) {
+    if (err instanceof msal.InteractionRequiredAuthError) {
+      await msalInstance.acquireTokenRedirect(request);
+      return null; // page will reload
+    }
+    throw err;
+  }
+}
+
+async function onSignedIn() {
+  currentUserEmail = (currentAccount.username || '').toLowerCase();
+  isAdmin = CONFIG.hardcodedAdmins.includes(currentUserEmail);
+
+  // For Phase 4a, only admins are authorised (full user list comes in Phase 4b)
+  if (!isAdmin) {
+    document.getElementById('awaiting-email').textContent = currentAccount.username;
+    showScreen('awaiting-screen');
+    return;
+  }
+
+  // Populate user chip
+  document.getElementById('user-name').textContent = currentAccount.name || currentAccount.username;
+  document.getElementById('user-avatar').textContent = (currentAccount.name || 'U').charAt(0).toUpperCase();
+  document.getElementById('admin-banner').classList.remove('hidden');
+
+  showScreen('jobs-screen');
+  await loadJobs();
+}
+
+// ============================================================
+// SCREEN ROUTING
+// ============================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ============================================================
+// MS GRAPH HELPERS
+// ============================================================
+async function graphFetch(path, options = {}) {
+  const token = await getToken();
+  if (!token) return null;
+  const url = path.startsWith('http') ? path : `https://graph.microsoft.com/v1.0${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Graph ${res.status}: ${text}`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+async function getAhSiteId() {
+  if (cachedAhSiteId) return cachedAhSiteId;
+  const result = await graphFetch(`/sites/${CONFIG.ahSitePath}`);
+  cachedAhSiteId = result.id;
+  return cachedAhSiteId;
+}
+
+// ============================================================
+// JOBS LIST
+// ============================================================
+async function loadJobs() {
+  const container = document.getElementById('jobs-content');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading Jobs...</div></div>';
+
+  try {
+    const siteId = await getAhSiteId();
+    // List the root of the Documents library
+    const result = await graphFetch(`/sites/${siteId}/drive/root/children?$top=200&$select=id,name,folder,webUrl`);
+    const items = result.value || [];
+
+    // Filter to job folders matching pattern, exclude system folders
+    const jobs = items
+      .filter(it => it.folder && CONFIG.jobFolderPattern.test(it.name))
+      .map(it => {
+        const m = it.name.match(CONFIG.jobFolderPattern);
+        return {
+          id: it.id,
+          folderName: it.name,
+          jobCode: m[1].trim(),
+          address: m[2].trim(),
+          webUrl: it.webUrl
+        };
+      })
+      .sort((a, b) => b.jobCode.localeCompare(a.jobCode)); // most recent code first
+
+    renderJobs(jobs);
+  } catch (err) {
+    console.error('Load jobs error:', err);
+    container.innerHTML = `
+      <div class="empty-state">
+        <div style="color: var(--red); margin-bottom: 8px;">Failed To Load Jobs</div>
+        <div class="text-small">${escapeHtml(err.message)}</div>
+        <button class="btn-secondary mt-16" onclick="loadJobs()">Try Again</button>
+      </div>`;
+  }
+}
+
+function renderJobs(jobs) {
+  const container = document.getElementById('jobs-content');
+  if (jobs.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div>No Jobs Found</div>
+        <div class="text-small mt-8">Jobs will appear here once you create them in SharePoint or use this app to create one.</div>
+      </div>`;
+    return;
+  }
+  const html = jobs.map(j => `
+    <div class="job-card" onclick="openJob('${escapeHtml(j.id)}', '${escapeHtml(j.folderName)}')">
+      <div class="job-code">${escapeHtml(j.jobCode)}</div>
+      <div class="job-address">${escapeHtml(j.address)}</div>
+    </div>
+  `).join('');
+  container.innerHTML = `<div class="jobs-list">${html}</div>`;
+}
+
+function openJob(id, folderName) {
+  // Phase 4b will build the job detail screen
+  showToast(`Opening ${folderName} Coming Soon`);
+}
+
+// ============================================================
+// USER MENU
+// ============================================================
+function toggleUserMenu() {
+  // Simple confirm-based logout for v1
+  if (confirm(`Signed in as ${currentAccount.username}\n\nSign out?`)) {
+    logout();
+  }
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = '';
+  if (type) t.classList.add(type);
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ============================================================
+// SERVICE WORKER REGISTRATION (PWA)
+// ============================================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+initAuth();
+</script>
+</body>
+</html>
