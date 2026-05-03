@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.7.1/lib/msal-browser.min.js"></script>
 <style>
   /* ================== THEME ================== */
   :root {
@@ -418,6 +418,12 @@ const CONFIG = {
 // ============================================================
 // MSAL SETUP
 // ============================================================
+if (typeof msal === 'undefined') {
+  // MSAL CDN failed to load — show a clear error so we don't get a confusing crash
+  document.body.innerHTML = '<div style="padding:24px;color:#ff6b6b;font-family:Inter,sans-serif;text-align:center;"><h2>Authentication Library Failed To Load</h2><p style="color:#9aa89e;margin-top:8px;">Check your internet connection and refresh. If this keeps happening, the Microsoft authentication CDN may be blocked.</p><button onclick="location.reload()" style="margin-top:16px;background:#7fff7f;color:#0f1410;border:none;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;">Refresh</button></div>';
+  throw new Error('MSAL library failed to load');
+}
+
 const msalInstance = new msal.PublicClientApplication({
   auth: {
     clientId: CONFIG.clientId,
