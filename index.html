@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.7.1/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0f1410; --bg-2: #161c18; --bg-3: #1f2722; --line: #2a332e;
@@ -40,8 +41,9 @@
   }
   input:focus, textarea:focus, select:focus { outline: none; border-color: var(--green-dim); }
   input::placeholder, textarea::placeholder { color: var(--text-3); }
+  textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+  select { cursor: pointer; }
 
-  /* Top bar */
   .top-bar {
     position: sticky; top: 0; z-index: 100;
     background: var(--bg-2); border-bottom: 1px solid var(--line);
@@ -55,25 +57,30 @@
   .back-btn:hover { background: var(--line); }
   .back-btn svg { width: 18px; height: 18px; stroke: var(--text); }
   .top-title { font-size: 17px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top-title.green { color: var(--green); }
   .top-actions { display: flex; gap: 8px; align-items: center; }
   .icon-btn {
     width: 36px; height: 36px; border-radius: 50%; background: var(--bg-3);
     display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s; flex-shrink: 0;
+    transition: background 0.15s; flex-shrink: 0; position: relative;
   }
   .icon-btn:hover { background: var(--line); }
   .icon-btn svg { width: 18px; height: 18px; stroke: var(--text); }
   .icon-btn.primary { background: var(--green); }
   .icon-btn.primary svg { stroke: var(--bg); }
   .icon-btn.primary:hover { background: var(--green-dim); }
+  .icon-btn .badge-dot {
+    position: absolute; top: 4px; right: 4px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+  }
 
-  /* Layout */
   .screen { min-height: 100vh; min-height: 100dvh; display: none; flex-direction: column; }
   .screen.active { display: flex; }
   .content { flex: 1; padding: 16px; }
   .content-narrow { max-width: 720px; margin: 0 auto; width: 100%; }
+  .content-wide { max-width: 960px; margin: 0 auto; width: 100%; }
 
-  /* Login */
   #login-screen {
     align-items: center; justify-content: center; padding: 24px; text-align: center;
     background: radial-gradient(ellipse at top, rgba(127, 255, 127, 0.05), transparent 60%);
@@ -97,6 +104,7 @@
   }
   .btn-primary:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(127, 255, 127, 0.3); }
   .btn-primary:active:not(:disabled) { transform: scale(0.97); }
+  .btn-primary.small { padding: 8px 14px; font-size: 14px; border-radius: 8px; }
   .btn-secondary {
     background: var(--bg-3); color: var(--text);
     padding: 12px 20px; border-radius: 10px; font-weight: 500;
@@ -104,9 +112,18 @@
     display: inline-flex; align-items: center; gap: 8px;
   }
   .btn-secondary:hover:not(:disabled) { background: var(--line); }
+  .btn-secondary.small { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+  .btn-danger {
+    background: var(--red-bg); color: var(--red);
+    padding: 12px 20px; border-radius: 10px; font-weight: 500;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    transition: background 0.15s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-danger:hover { background: rgba(255, 107, 107, 0.2); }
+  .btn-danger.small { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* Awaiting */
   #awaiting-screen { align-items: center; justify-content: center; padding: 24px; text-align: center; }
   .awaiting-icon {
     width: 80px; height: 80px; border-radius: 50%;
@@ -116,7 +133,6 @@
   }
   .awaiting-icon svg { width: 40px; height: 40px; stroke: var(--amber); }
 
-  /* Jobs list */
   .jobs-list { display: flex; flex-direction: column; gap: 8px; }
   .job-card {
     background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px;
@@ -152,15 +168,14 @@
   }
   .user-name { font-size: 13px; color: var(--text-2); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* Form */
   .form-group { margin-bottom: 16px; }
   .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
   .form-hint { font-size: 12px; color: var(--text-3); margin-top: 4px; }
   .form-error { font-size: 12px; color: var(--red); margin-top: 4px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   input.invalid { border-color: var(--red); }
 
-  /* Email chips */
   .email-chips {
     display: flex; flex-wrap: wrap; gap: 6px;
     padding: 8px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px;
@@ -190,7 +205,6 @@
   }
   .email-chip-add:hover { border-color: var(--green-dim); color: var(--green); }
 
-  /* Email search */
   .email-search-wrap { position: relative; }
   .email-suggestions {
     position: absolute; top: calc(100% + 4px); left: 0; right: 0;
@@ -208,7 +222,6 @@
   }
   .email-suggestion-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
 
-  /* Job detail */
   .job-header {
     background: var(--bg-2); border: 1px solid var(--line);
     border-radius: 12px; padding: 16px; margin-bottom: 16px;
@@ -229,7 +242,67 @@
 
   .info-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 
-  /* Modal */
+  /* ====== SETTINGS ====== */
+  .settings-tabs {
+    display: flex; gap: 4px;
+    background: var(--bg-2); border-radius: 12px; padding: 4px;
+    margin-bottom: 16px; overflow-x: auto;
+    border: 1px solid var(--line);
+  }
+  .settings-tab {
+    padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    color: var(--text-2); cursor: pointer; white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+  .settings-tab:hover { color: var(--text); }
+  .settings-tab.active { background: var(--bg-3); color: var(--green); }
+
+  .settings-section { display: none; }
+  .settings-section.active { display: block; }
+
+  .trade-row {
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px;
+    display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 12px;
+    align-items: center;
+  }
+  .trade-row + .trade-row { margin-top: 6px; }
+  .trade-row.skipped { opacity: 0.5; }
+  .trade-name { font-weight: 500; font-size: 14px; }
+  .trade-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .trade-row select, .trade-row input {
+    padding: 6px 10px; font-size: 13px; min-width: 110px;
+  }
+  .trade-row .form-row-mini {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .trade-row .input-mini {
+    width: 64px; padding: 6px 8px; font-size: 13px; text-align: center;
+  }
+
+  .supplier-card {
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .supplier-card + .supplier-card { margin-top: 6px; }
+  .supplier-card.inactive { opacity: 0.55; }
+  .supplier-info { flex: 1; min-width: 0; }
+  .supplier-name { font-weight: 500; font-size: 14px; }
+  .supplier-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .supplier-trades { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .trade-tag {
+    background: var(--green-bg); color: var(--green);
+    border-radius: 6px; padding: 1px 6px; font-size: 11px; font-weight: 500;
+  }
+  .supplier-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .filter-bar {
+    display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .filter-bar input { flex: 1; min-width: 200px; }
+  .filter-bar select { width: auto; min-width: 160px; }
+
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
     z-index: 200; display: none; align-items: center; justify-content: center; padding: 16px;
@@ -237,14 +310,33 @@
   .modal-backdrop.active { display: flex; }
   .modal {
     background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px;
-    padding: 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
+    padding: 24px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto;
     box-shadow: var(--shadow-strong);
   }
+  .modal.wide { max-width: 720px; }
   .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
   .modal-body { color: var(--text-2); margin-bottom: 16px; font-size: 14px; line-height: 1.6; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
 
-  /* Toast */
+  /* ====== MULTISELECT ====== */
+  .multi-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 8px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px;
+    min-height: 44px; align-items: center;
+  }
+  .multi-chip {
+    background: var(--green-bg); color: var(--green);
+    border-radius: 16px; padding: 4px 4px 4px 10px;
+    font-size: 13px; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .multi-chip .x {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: rgba(127,255,127,0.15);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .multi-chip .x:hover { background: rgba(127,255,127,0.3); }
+  .multi-chip svg { width: 10px; height: 10px; stroke: var(--green); }
+
   #toast {
     position: fixed; bottom: 24px; left: 50%;
     transform: translateX(-50%) translateY(120px);
@@ -257,7 +349,6 @@
   #toast.error { border-color: var(--red); color: var(--red); }
   #toast.success { border-color: var(--green-dim); color: var(--green); }
 
-  /* Loading */
   .loading {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 60px 24px; color: var(--text-2); gap: 16px;
@@ -274,7 +365,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Progress */
   .progress-list { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; }
   .progress-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; color: var(--text-2); }
   .progress-icon { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -283,6 +373,20 @@
   .progress-item.active { color: var(--text); }
   .progress-item.done { color: var(--green); }
   .progress-item.failed { color: var(--red); }
+
+  .toggle {
+    width: 36px; height: 20px; border-radius: 10px;
+    background: var(--bg-3); position: relative; cursor: pointer;
+    transition: background 0.15s; flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-3);
+    transition: transform 0.15s, background 0.15s;
+  }
+  .toggle.on { background: var(--green-bg); }
+  .toggle.on::after { transform: translateX(16px); background: var(--green); }
 
   .hidden { display: none !important; }
   .text-muted { color: var(--text-2); }
@@ -293,6 +397,9 @@
   .mt-12 { margin-top: 12px; }
   .mt-16 { margin-top: 16px; }
   .mt-24 { margin-top: 24px; }
+  .mb-12 { margin-bottom: 12px; }
+  .mb-16 { margin-bottom: 16px; }
+  .flex-row { display: flex; align-items: center; gap: 8px; }
 </style>
 </head>
 <body>
@@ -312,7 +419,7 @@
   </button>
 </div>
 
-<!-- Awaiting Auth -->
+<!-- Awaiting -->
 <div id="awaiting-screen" class="screen">
   <div class="awaiting-icon">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -336,15 +443,19 @@
     <div class="top-actions">
       <button class="icon-btn primary" onclick="openNewJob()" title="New Job">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
       </button>
       <button class="icon-btn" onclick="loadJobs()" title="Refresh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/>
-          <polyline points="1 20 1 14 7 14"/>
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
       <div class="user-chip" onclick="toggleUserMenu()">
@@ -373,8 +484,7 @@
   <div class="top-bar">
     <button class="back-btn" onclick="goBack()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="19" y1="12" x2="5" y2="12"/>
-        <polyline points="12 19 5 12 12 5"/>
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
       </svg>
     </button>
     <div class="top-title">New Job</div>
@@ -406,12 +516,10 @@
         <div class="email-chips" id="nj-team-chips"></div>
         <div class="form-hint">CC'd on every RFQ for this job. Default admins are locked.</div>
       </div>
-
       <div class="btn-row mt-24">
         <button class="btn-primary" id="nj-submit" onclick="submitNewJob()">Create Job</button>
         <button class="btn-secondary" onclick="goBack()">Cancel</button>
       </div>
-
       <div id="nj-progress" class="hidden mt-24">
         <div class="info-card">
           <div style="font-weight: 600; margin-bottom: 8px;">Creating Job...</div>
@@ -427,11 +535,10 @@
   <div class="top-bar">
     <button class="back-btn" onclick="goBack()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="19" y1="12" x2="5" y2="12"/>
-        <polyline points="12 19 5 12 12 5"/>
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
       </svg>
     </button>
-    <div class="top-title" id="jd-title">Job</div>
+    <div class="top-title green" id="jd-title">Job</div>
     <div class="top-actions">
       <button class="icon-btn" onclick="openCurrentJobInSharePoint()" title="Open In SharePoint">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -451,12 +558,119 @@
   </div>
 </div>
 
-<!-- Modal -->
+<!-- SETTINGS -->
+<div id="settings-screen" class="screen">
+  <div class="top-bar">
+    <button class="back-btn" onclick="goBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+      </svg>
+    </button>
+    <div class="top-title">Settings</div>
+  </div>
+  <div class="content">
+    <div class="content-wide">
+      <div class="settings-tabs">
+        <div class="settings-tab active" data-tab="trades">Trades & Mapping</div>
+        <div class="settings-tab" data-tab="suppliers">Suppliers</div>
+        <div class="settings-tab" data-tab="signature">Email Signature</div>
+        <div class="settings-tab" data-tab="users">Users</div>
+      </div>
+
+      <!-- Trades section -->
+      <div class="settings-section active" id="settings-trades">
+        <div class="info-card mb-12" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="font-weight: 600;">Trades & Material Suppliers</div>
+            <div class="text-muted text-small mt-4">
+              Imported from your budget template's Category column. Set type (Trade / Material / Skip),
+              the budget Description row each maps to, and default follow-up timing.
+            </div>
+          </div>
+          <button class="btn-secondary small" onclick="reimportTradesFromExcel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Re-Import From Excel
+          </button>
+        </div>
+        <div id="trades-list">
+          <div class="loading"><div class="spinner"></div><div>Loading...</div></div>
+        </div>
+      </div>
+
+      <!-- Suppliers section -->
+      <div class="settings-section" id="settings-suppliers">
+        <div class="info-card mb-12" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="font-weight: 600;">Suppliers</div>
+            <div class="text-muted text-small mt-4">Subcontractors and material suppliers organised by trade.</div>
+          </div>
+          <button class="btn-primary small" onclick="openSupplierEditor(null)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Supplier
+          </button>
+        </div>
+        <div class="filter-bar">
+          <input id="supplier-search" type="text" placeholder="Search by name, email or company..." />
+          <select id="supplier-trade-filter">
+            <option value="">All Trades</option>
+          </select>
+          <select id="supplier-active-filter">
+            <option value="active">Active Only</option>
+            <option value="all">All</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
+        </div>
+        <div id="suppliers-list"></div>
+      </div>
+
+      <!-- Signature section -->
+      <div class="settings-section" id="settings-signature">
+        <div class="info-card mb-12">
+          <div style="font-weight: 600;">Email Signature</div>
+          <div class="text-muted text-small mt-4">Auto-appended to every RFQ email. Uses your sent name on each email.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Title</label>
+          <input id="sig-title" type="text" placeholder="Estimator" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Signature Body (HTML allowed)</label>
+          <textarea id="sig-body" rows="10" placeholder="Auzzie Homes Pty Ltd&#10;Address line&#10;Phone: ..."></textarea>
+          <div class="form-hint">Plain text recommended. Variables: {senderName}, {senderTitle}, {senderEmail}.</div>
+        </div>
+        <button class="btn-primary" onclick="saveSignature()">Save Signature</button>
+      </div>
+
+      <!-- Users section -->
+      <div class="settings-section" id="settings-users">
+        <div class="info-card mb-12">
+          <div style="font-weight: 600;">Authorised Users</div>
+          <div class="text-muted text-small mt-4">
+            Two admins are hardcoded: <strong>oskar@auhs.com.au</strong> and <strong>est@auhs.com.au</strong>.
+            Both can use all features <em>except</em> sending RFQs &mdash; only <strong>est@auhs.com.au</strong> can send.
+            Additional users will be added in a later phase.
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="text-small">
+            <div class="flex-row mb-12"><span class="trade-tag">Admin</span> oskar@auhs.com.au</div>
+            <div class="flex-row"><span class="trade-tag">Admin · Sender</span> est@auhs.com.au</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="modal-backdrop" class="modal-backdrop">
   <div class="modal" id="modal-content"></div>
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 <script>
@@ -470,16 +684,17 @@ const CONFIG = {
   ahOfficePath: 'auzziehomes.sharepoint.com:/sites/AHOffice',
   commonDocsPath: 'AAA Quote Common Docs',
   budgetTemplateName: '0 Budget Control Template.xlsx',
+  configFileName: 'estimating-config.json',
+  suppliersFileName: 'suppliers.json',
   jobFolderPattern: /^(\d{4})\s+([A-Z][A-Z0-9]{1,4})\s+Site\s+Docs\s+-\s+(.+)$/,
   codeRegex: /^\d{4}$/,
   nameRegex: /^[A-Z][A-Z0-9]{1,4}$/,
+  // Phase 4c-i tweak: removed Incident, Interior Ideas
   ahSiteSubfolders: [
     'AAA Docs for Tradies',
     'Builder Advise',
     'Dilapidation Report',
-    'Incident',
     'Inspections',
-    'Interior Ideas',
     'Permit',
     'Quote',
     'RFI',
@@ -489,6 +704,9 @@ const CONFIG = {
   ],
   ahOfficeSubfolders: ['Contract', 'INV', 'INV to Client', 'Q to Client', 'Tender'],
   hardcodedAdmins: ['oskar@auhs.com.au', 'est@auhs.com.au'],
+  senderEmail: 'est@auhs.com.au', // only this email can send RFQs
+  defaultDaysToRespond: 5,
+  defaultDaysToFollowup: 3,
   scopes: [
     'User.Read', 'User.ReadBasic.All',
     'Files.ReadWrite.All', 'Sites.ReadWrite.All',
@@ -512,7 +730,7 @@ const msalInstance = new msal.PublicClientApplication({
   cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
 });
 
-// State
+// ============= STATE =============
 let currentAccount = null;
 let currentUserEmail = null;
 let isAdmin = false;
@@ -522,15 +740,18 @@ const navStack = [];
 let currentJob = null;
 let emailSearchTimer = null;
 let projectTeamEmails = [];
+// Settings state
+let appConfig = null;     // estimating-config.json
+let suppliersData = null; // suppliers.json
+let editingSupplier = null;
+let supplierMultiSelectTrades = [];
 
-// ============ AUTH ============
+// ============= AUTH =============
 async function initAuth() {
   try {
     await msalInstance.initialize();
     const response = await msalInstance.handleRedirectPromise();
-    if (response && response.account) {
-      msalInstance.setActiveAccount(response.account);
-    }
+    if (response && response.account) msalInstance.setActiveAccount(response.account);
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
       currentAccount = accounts[0];
@@ -544,12 +765,8 @@ async function initAuth() {
 }
 
 async function login() {
-  try {
-    await msalInstance.loginRedirect({ scopes: CONFIG.scopes, prompt: 'select_account' });
-  } catch (err) {
-    console.error('Login error:', err);
-    showToast('Sign In Failed', 'error');
-  }
+  try { await msalInstance.loginRedirect({ scopes: CONFIG.scopes, prompt: 'select_account' }); }
+  catch (err) { console.error(err); showToast('Sign In Failed', 'error'); }
 }
 
 async function logout() {
@@ -558,14 +775,9 @@ async function logout() {
 
 async function getToken() {
   const request = { scopes: CONFIG.scopes, account: currentAccount };
-  try {
-    const result = await msalInstance.acquireTokenSilent(request);
-    return result.accessToken;
-  } catch (err) {
-    if (err instanceof msal.InteractionRequiredAuthError) {
-      await msalInstance.acquireTokenRedirect(request);
-      return null;
-    }
+  try { return (await msalInstance.acquireTokenSilent(request)).accessToken; }
+  catch (err) {
+    if (err instanceof msal.InteractionRequiredAuthError) { await msalInstance.acquireTokenRedirect(request); return null; }
     throw err;
   }
 }
@@ -587,17 +799,12 @@ async function onSignedIn() {
   await loadJobs();
 }
 
-// ============ NAV ============
+// ============= NAV =============
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
-
-function navigate(screen, state) {
-  navStack.push({ screen, state });
-  showScreen(screen);
-}
-
+function navigate(screen, state) { navStack.push({ screen, state }); showScreen(screen); }
 function goBack() {
   if (navStack.length > 1) {
     navStack.pop();
@@ -607,10 +814,9 @@ function goBack() {
   }
 }
 
-// ============ GRAPH HELPERS ============
+// ============= GRAPH =============
 async function graphFetch(path, options = {}) {
-  const token = await getToken();
-  if (!token) return null;
+  const token = await getToken(); if (!token) return null;
   const url = path.startsWith('http') ? path : `https://graph.microsoft.com/v1.0${path}`;
   const headers = { 'Authorization': `Bearer ${token}`, ...(options.headers || {}) };
   if (options.body && !headers['Content-Type'] && typeof options.body === 'string') {
@@ -622,8 +828,7 @@ async function graphFetch(path, options = {}) {
     let parsed;
     try { parsed = JSON.parse(text); } catch (e) {}
     const err = new Error(`Graph ${res.status}: ${(parsed && parsed.error && parsed.error.message) || text}`);
-    err.status = res.status;
-    err.body = parsed || text;
+    err.status = res.status; err.body = parsed || text;
     throw err;
   }
   if (res.status === 204) return null;
@@ -632,34 +837,16 @@ async function graphFetch(path, options = {}) {
   return res;
 }
 
-async function getAhSiteId() {
-  if (cachedAhSiteId) return cachedAhSiteId;
-  const r = await graphFetch(`/sites/${CONFIG.ahSitePath}`);
-  cachedAhSiteId = r.id;
-  return cachedAhSiteId;
-}
-
-async function getAhOfficeId() {
-  if (cachedAhOfficeId) return cachedAhOfficeId;
-  const r = await graphFetch(`/sites/${CONFIG.ahOfficePath}`);
-  cachedAhOfficeId = r.id;
-  return cachedAhOfficeId;
-}
-
-function encodeUriPath(path) {
-  return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
-}
+async function getAhSiteId() { if (cachedAhSiteId) return cachedAhSiteId; const r = await graphFetch(`/sites/${CONFIG.ahSitePath}`); cachedAhSiteId = r.id; return cachedAhSiteId; }
+async function getAhOfficeId() { if (cachedAhOfficeId) return cachedAhOfficeId; const r = await graphFetch(`/sites/${CONFIG.ahOfficePath}`); cachedAhOfficeId = r.id; return cachedAhOfficeId; }
+function encodeUriPath(path) { return path.split('/').map(seg => encodeURIComponent(seg)).join('/'); }
 
 async function ensureFolder(siteId, parentPath, folderName) {
   const parentRef = parentPath
     ? `/sites/${siteId}/drive/root:/${encodeUriPath(parentPath)}:`
     : `/sites/${siteId}/drive/root`;
   try {
-    const body = JSON.stringify({
-      name: folderName,
-      folder: {},
-      '@microsoft.graph.conflictBehavior': 'fail'
-    });
+    const body = JSON.stringify({ name: folderName, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' });
     const result = await graphFetch(`${parentRef}/children`, { method: 'POST', body });
     return { item: result, created: true };
   } catch (err) {
@@ -699,10 +886,7 @@ async function uploadJson(siteId, parentPath, filename, data) {
     `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeUriPath(path)}:/content`,
     { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: content }
   );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Upload failed: ${res.status} ${text}`);
-  }
+  if (!res.ok) { const text = await res.text(); throw new Error(`Upload failed: ${res.status} ${text}`); }
   return res.json();
 }
 
@@ -723,7 +907,19 @@ async function readJson(siteId, parentPath, filename) {
   }
 }
 
-// ============ AUDIT ============
+// Read XLSX as ArrayBuffer
+async function readXlsx(siteId, parentPath, filename) {
+  const path = parentPath ? `${parentPath}/${filename}` : filename;
+  const token = await getToken();
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeUriPath(path)}:/content`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Read XLSX failed: ${res.status}`);
+  return res.arrayBuffer();
+}
+
+// ============= AUDIT =============
 async function logAudit(action, target, details) {
   try {
     const siteId = await getAhSiteId();
@@ -733,19 +929,52 @@ async function logAudit(action, target, details) {
     const folderPath = CONFIG.commonDocsPath;
     const existing = (await readJson(siteId, folderPath, filename)) || { entries: [] };
     existing.entries.push({
-      timestamp: now.toISOString(),
-      user: currentUserEmail,
-      action,
-      target,
-      details: details || null
+      timestamp: now.toISOString(), user: currentUserEmail,
+      action, target, details: details || null
     });
     await uploadJson(siteId, folderPath, filename, existing);
-  } catch (err) {
-    console.warn('Audit log write failed:', err);
-  }
+  } catch (err) { console.warn('Audit log write failed:', err); }
 }
 
-// ============ JOBS LIST ============
+// ============= APP CONFIG =============
+async function loadAppConfig() {
+  if (appConfig) return appConfig;
+  const siteId = await getAhSiteId();
+  appConfig = (await readJson(siteId, CONFIG.commonDocsPath, CONFIG.configFileName)) || createDefaultConfig();
+  return appConfig;
+}
+
+function createDefaultConfig() {
+  return {
+    version: 1,
+    trades: [], // each: {category, type: 'trade'|'material'|'skip', budgetRowDescription, daysToRespond, daysToFollowup, sowTemplate, emailTemplate}
+    signature: {
+      title: 'Estimator',
+      body: 'Auzzie Homes Pty Ltd\n[Address]\nPhone: [Phone]'
+    },
+    suggestionHistory: {}, // future: trade -> [picks]
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function saveAppConfig() {
+  const siteId = await getAhSiteId();
+  await uploadJson(siteId, CONFIG.commonDocsPath, CONFIG.configFileName, appConfig);
+}
+
+async function loadSuppliers() {
+  if (suppliersData) return suppliersData;
+  const siteId = await getAhSiteId();
+  suppliersData = (await readJson(siteId, CONFIG.commonDocsPath, CONFIG.suppliersFileName)) || { suppliers: [] };
+  return suppliersData;
+}
+
+async function saveSuppliers() {
+  const siteId = await getAhSiteId();
+  await uploadJson(siteId, CONFIG.commonDocsPath, CONFIG.suppliersFileName, suppliersData);
+}
+
+// ============= JOBS LIST =============
 async function loadJobs() {
   const container = document.getElementById('jobs-content');
   container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading Jobs...</div></div>';
@@ -757,33 +986,20 @@ async function loadJobs() {
       .filter(it => it.folder && CONFIG.jobFolderPattern.test(it.name))
       .map(it => {
         const m = it.name.match(CONFIG.jobFolderPattern);
-        return {
-          id: it.id, folderName: it.name,
-          jobCode: m[1].trim(), jobName: m[2].trim(), address: m[3].trim(),
-          webUrl: it.webUrl
-        };
+        return { id: it.id, folderName: it.name, jobCode: m[1].trim(), jobName: m[2].trim(), address: m[3].trim(), webUrl: it.webUrl };
       })
       .sort((a, b) => b.jobCode.localeCompare(a.jobCode));
     renderJobs(jobs);
   } catch (err) {
     console.error('Load jobs error:', err);
-    container.innerHTML = `
-      <div class="empty-state">
-        <div style="color: var(--red); margin-bottom: 8px;">Failed To Load Jobs</div>
-        <div class="text-small">${escapeHtml(err.message)}</div>
-        <button class="btn-secondary mt-16" onclick="loadJobs()">Try Again</button>
-      </div>`;
+    container.innerHTML = `<div class="empty-state"><div style="color: var(--red); margin-bottom: 8px;">Failed To Load Jobs</div><div class="text-small">${escapeHtml(err.message)}</div><button class="btn-secondary mt-16" onclick="loadJobs()">Try Again</button></div>`;
   }
 }
 
 function renderJobs(jobs) {
   const container = document.getElementById('jobs-content');
   if (jobs.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div>No Jobs Found</div>
-        <div class="text-small mt-8">Tap the + button to create a new job.</div>
-      </div>`;
+    container.innerHTML = `<div class="empty-state"><div>No Jobs Found</div><div class="text-small mt-8">Tap the + button to create a new job.</div></div>`;
     return;
   }
   const html = jobs.map(j => `
@@ -793,22 +1009,22 @@ function renderJobs(jobs) {
     </div>
   `).join('');
   container.innerHTML = `<div class="jobs-list">${html}</div>`;
-  container.querySelectorAll('.job-card').forEach((card, i) => {
-    card.addEventListener('click', () => openJob(jobs[i]));
-  });
+  container.querySelectorAll('.job-card').forEach((card, i) => card.addEventListener('click', () => openJob(jobs[i])));
 }
 
-function openJob(job) {
-  currentJob = job;
-  navigate('job-detail-screen', { jobId: job.id });
-  loadJobDetail();
+function openJob(job) { currentJob = job; navigate('job-detail-screen', { jobId: job.id }); loadJobDetail(); }
+function openCurrentJobInSharePoint() { if (currentJob && currentJob.webUrl) window.open(currentJob.webUrl, '_blank'); }
+
+// Display "Oskar, Est" instead of full emails
+function formatTeamEmails(emails) {
+  if (!emails || !emails.length) return 'Not Set';
+  return emails.map(e => {
+    const local = (e.split('@')[0] || '').toLowerCase();
+    return local.charAt(0).toUpperCase() + local.slice(1);
+  }).join(', ');
 }
 
-function openCurrentJobInSharePoint() {
-  if (currentJob && currentJob.webUrl) window.open(currentJob.webUrl, '_blank');
-}
-
-// ============ JOB DETAIL ============
+// ============= JOB DETAIL =============
 async function loadJobDetail() {
   const container = document.getElementById('jd-content');
   document.getElementById('jd-title').textContent = `${currentJob.jobCode} ${currentJob.jobName}`;
@@ -818,44 +1034,26 @@ async function loadJobDetail() {
     const quotePath = `${currentJob.folderName}/Quote`;
     let tracker = await readJson(siteId, quotePath, 'rfq-tracker.json');
     if (!tracker) {
-      // Check Quote folder for existing PDFs
       const quoteFolder = await graphFetch(
         `/sites/${siteId}/drive/root:/${encodeUriPath(quotePath)}:/children?$top=200&$select=id,name,file`
-      ).catch(err => {
-        if (err.status === 404) return { value: [] };
-        throw err;
-      });
+      ).catch(err => err.status === 404 ? { value: [] } : Promise.reject(err));
       const existingPdfs = (quoteFolder.value || []).filter(it => it.file && /\.pdf$/i.test(it.name));
-      if (existingPdfs.length > 0) {
-        renderMigrationPrompt(existingPdfs.length);
-        return;
-      } else {
-        tracker = createEmptyTracker();
-        await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
-      }
+      if (existingPdfs.length > 0) { renderMigrationPrompt(existingPdfs.length); return; }
+      else { tracker = createEmptyTracker(); await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker); }
     }
     renderJobDetail(tracker);
   } catch (err) {
     console.error('Load job detail error:', err);
-    container.innerHTML = `
-      <div class="empty-state">
-        <div style="color: var(--red); margin-bottom: 8px;">Failed To Load Job</div>
-        <div class="text-small">${escapeHtml(err.message)}</div>
-        <button class="btn-secondary mt-16" onclick="loadJobDetail()">Try Again</button>
-      </div>`;
+    container.innerHTML = `<div class="empty-state"><div style="color: var(--red); margin-bottom: 8px;">Failed To Load Job</div><div class="text-small">${escapeHtml(err.message)}</div><button class="btn-secondary mt-16" onclick="loadJobDetail()">Try Again</button></div>`;
   }
 }
 
 function createEmptyTracker() {
   return {
     version: 1,
-    jobCode: currentJob.jobCode,
-    jobName: currentJob.jobName,
-    address: currentJob.address,
-    projectTeamEmails: [],
-    rfqs: [],
-    createdAt: new Date().toISOString(),
-    createdBy: currentUserEmail
+    jobCode: currentJob.jobCode, jobName: currentJob.jobName, address: currentJob.address,
+    projectTeamEmails: [], rfqs: [],
+    createdAt: new Date().toISOString(), createdBy: currentUserEmail
   };
 }
 
@@ -865,8 +1063,7 @@ function renderMigrationPrompt(count) {
     <div class="info-card">
       <div style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">Existing Quotes Detected</div>
       <div class="text-muted text-small" style="margin-bottom: 16px;">
-        This job's <strong>Quote</strong> folder already has <strong>${count}</strong> PDF file${count === 1 ? '' : 's'},
-        but no tracker has been set up yet. What would you like to do?
+        This job's <strong>Quote</strong> folder already has <strong>${count}</strong> PDF file${count === 1 ? '' : 's'}, but no tracker has been set up yet. What would you like to do?
       </div>
       <div class="btn-row">
         <button class="btn-primary" onclick="migrateExistingQuotes()">Migrate Existing Files</button>
@@ -883,16 +1080,12 @@ async function skipMigration() {
   try {
     const siteId = await getAhSiteId();
     const quotePath = `${currentJob.folderName}/Quote`;
-    const tracker = createEmptyTracker();
-    tracker.migrationSkipped = true;
+    const tracker = createEmptyTracker(); tracker.migrationSkipped = true;
     await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
     await logAudit('JOB_TRACKER_INITIALISED', currentJob.folderName, { migrated: false });
     renderJobDetail(tracker);
     showToast('Tracker Initialised', 'success');
-  } catch (err) {
-    console.error('Skip migration error:', err);
-    showToast('Failed To Initialise Tracker', 'error');
-  }
+  } catch (err) { console.error(err); showToast('Failed To Initialise Tracker', 'error'); }
 }
 
 async function migrateExistingQuotes() {
@@ -901,108 +1094,69 @@ async function migrateExistingQuotes() {
   try {
     const siteId = await getAhSiteId();
     const quotePath = `${currentJob.folderName}/Quote`;
-    const result = await graphFetch(
-      `/sites/${siteId}/drive/root:/${encodeUriPath(quotePath)}:/children?$top=500&$select=id,name,file,webUrl,size,lastModifiedDateTime`
-    );
+    const result = await graphFetch(`/sites/${siteId}/drive/root:/${encodeUriPath(quotePath)}:/children?$top=500&$select=id,name,file,webUrl,size,lastModifiedDateTime`);
     const pdfs = (result.value || []).filter(it => it.file && /\.pdf$/i.test(it.name));
     const tracker = createEmptyTracker();
     tracker.migrated = true;
-    const parsed = [];
-    const needsReview = [];
+    const parsed = []; const needsReview = [];
     for (const pdf of pdfs) {
       const stem = pdf.name.replace(/\.pdf$/i, '');
       const m = stem.match(/^(.+?)\s*-\s*(.+?)\s+v(\d+)(?:\s*-\s*([\d,]+(?:\.\d+)?))?$/i);
       if (m) {
-        parsed.push({
-          fileName: pdf.name, fileId: pdf.id, webUrl: pdf.webUrl,
-          trade: m[1].trim(), company: m[2].trim(),
-          version: parseInt(m[3], 10),
-          amount: m[4] ? parseFloat(m[4].replace(/,/g, '')) : null,
-          receivedAt: pdf.lastModifiedDateTime
-        });
+        parsed.push({ fileName: pdf.name, fileId: pdf.id, webUrl: pdf.webUrl, trade: m[1].trim(), company: m[2].trim(), version: parseInt(m[3], 10), amount: m[4] ? parseFloat(m[4].replace(/,/g, '')) : null, receivedAt: pdf.lastModifiedDateTime });
       } else {
-        needsReview.push({
-          fileName: pdf.name, fileId: pdf.id, webUrl: pdf.webUrl,
-          receivedAt: pdf.lastModifiedDateTime
-        });
+        needsReview.push({ fileName: pdf.name, fileId: pdf.id, webUrl: pdf.webUrl, receivedAt: pdf.lastModifiedDateTime });
       }
     }
-    tracker.migratedQuotes = parsed;
-    tracker.needsReview = needsReview;
+    tracker.migratedQuotes = parsed; tracker.needsReview = needsReview;
     await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
-    await logAudit('JOB_TRACKER_INITIALISED', currentJob.folderName, {
-      migrated: true,
-      parsedCount: parsed.length,
-      needsReviewCount: needsReview.length
-    });
+    await logAudit('JOB_TRACKER_INITIALISED', currentJob.folderName, { migrated: true, parsedCount: parsed.length, needsReviewCount: needsReview.length });
     renderJobDetail(tracker);
     showToast(`Migrated ${parsed.length} Quote${parsed.length === 1 ? '' : 's'}`, 'success');
   } catch (err) {
-    console.error('Migration error:', err);
-    showToast('Migration Failed', 'error');
-    container.innerHTML = `
-      <div class="empty-state">
-        <div style="color: var(--red); margin-bottom: 8px;">Migration Failed</div>
-        <div class="text-small">${escapeHtml(err.message)}</div>
-        <button class="btn-secondary mt-16" onclick="loadJobDetail()">Back</button>
-      </div>`;
+    console.error(err); showToast('Migration Failed', 'error');
+    container.innerHTML = `<div class="empty-state"><div style="color: var(--red); margin-bottom: 8px;">Migration Failed</div><div class="text-small">${escapeHtml(err.message)}</div><button class="btn-secondary mt-16" onclick="loadJobDetail()">Back</button></div>`;
   }
 }
 
 function renderJobDetail(tracker) {
   const container = document.getElementById('jd-content');
-  const teamEmails = (tracker.projectTeamEmails && tracker.projectTeamEmails.length)
-    ? tracker.projectTeamEmails.join(', ')
-    : 'Not Set';
+  const teamDisplay = formatTeamEmails(tracker.projectTeamEmails);
   const rfqCount = (tracker.rfqs || []).length;
   const migratedCount = (tracker.migratedQuotes || []).length;
   const needsReviewCount = (tracker.needsReview || []).length;
-
   let migratedSection = '';
   if (migratedCount > 0 || needsReviewCount > 0) {
     const items = [];
     if (migratedCount > 0) items.push(`<div class="text-small">${migratedCount} Parsed Quote${migratedCount === 1 ? '' : 's'} From Existing Files</div>`);
-    if (needsReviewCount > 0) items.push(`<div class="text-small mt-4" style="color: var(--amber);">${needsReviewCount} File${needsReviewCount === 1 ? ' Needs' : 's Need'} Manual Review (Filename Did Not Match Standard Format)</div>`);
-    migratedSection = `
-      <div class="section-title">Migrated From Existing Files</div>
-      <div class="info-card">${items.join('')}</div>`;
+    if (needsReviewCount > 0) items.push(`<div class="text-small mt-4" style="color: var(--amber);">${needsReviewCount} File${needsReviewCount === 1 ? ' Needs' : 's Need'} Manual Review</div>`);
+    migratedSection = `<div class="section-title">Migrated From Existing Files</div><div class="info-card">${items.join('')}</div>`;
   }
-
   container.innerHTML = `
     <div class="job-header">
       <div class="job-header-code">${escapeHtml(currentJob.jobCode)} ${escapeHtml(currentJob.jobName)}</div>
       <div class="job-header-address">${escapeHtml(currentJob.address)}</div>
       <div class="job-header-meta">
-        <div><strong>Project Team:</strong> ${escapeHtml(teamEmails)}</div>
+        <div><strong>Project Team:</strong> ${escapeHtml(teamDisplay)}</div>
       </div>
     </div>
-
     <div class="section-title">RFQs <span class="text-muted text-small" style="font-weight: normal; text-transform: none; letter-spacing: 0;">(${rfqCount} Total)</span></div>
     <div class="info-card">
-      ${rfqCount === 0
-        ? '<div class="text-muted text-small">No RFQs Sent Yet</div>'
-        : '<div class="text-muted text-small">RFQ List Display Coming In Next Phase</div>'}
+      ${rfqCount === 0 ? '<div class="text-muted text-small">No RFQs Sent Yet</div>' : '<div class="text-muted text-small">RFQ List Display Coming In Next Phase</div>'}
       <button class="btn-primary mt-16" disabled title="Coming In Next Phase">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="22" y1="2" x2="11" y2="13"/>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Send New RFQ
       </button>
     </div>
-
     ${migratedSection}
-
     <div class="section-title">Folder</div>
     <div class="info-card">
-      <a href="${escapeHtml(currentJob.webUrl)}" target="_blank" style="color: var(--blue); text-decoration: none; font-size: 14px;">
-        Open ${escapeHtml(currentJob.folderName)} In SharePoint
-      </a>
+      <a href="${escapeHtml(currentJob.webUrl)}" target="_blank" style="color: var(--blue); text-decoration: none; font-size: 14px;">Open ${escapeHtml(currentJob.folderName)} In SharePoint</a>
     </div>
   `;
 }
 
-// ============ NEW JOB ============
+// ============= NEW JOB =============
 function openNewJob() {
   document.getElementById('nj-code').value = '';
   document.getElementById('nj-name').value = '';
@@ -1010,10 +1164,9 @@ function openNewJob() {
   ['nj-code-err', 'nj-name-err', 'nj-address-err'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('nj-progress').classList.add('hidden');
   document.getElementById('nj-submit').disabled = false;
-
   projectTeamEmails = [
-    { email: 'oskar@auhs.com.au', name: 'Oskar Lue', locked: true },
-    { email: 'est@auhs.com.au', name: 'Estimating', locked: true }
+    { email: 'oskar@auhs.com.au', name: 'Oskar', locked: true },
+    { email: 'est@auhs.com.au', name: 'Est', locked: true }
   ];
   renderTeamChips();
   navigate('new-job-screen', {});
@@ -1026,19 +1179,13 @@ function renderTeamChips() {
       <span class="email-chip-text">${escapeHtml(c.name || c.email)}</span>
       ${c.locked ? '' : `
         <button class="email-chip-remove" data-idx="${i}" title="Remove">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>`}
     </span>
   `).join('');
   container.innerHTML = chipsHtml + `
     <button class="email-chip-add" onclick="openEmailSearch()">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Add
     </button>`;
   container.querySelectorAll('.email-chip-remove').forEach(btn => {
@@ -1051,7 +1198,6 @@ function renderTeamChips() {
   });
 }
 
-// ============ EMAIL SEARCH ============
 function openEmailSearch() {
   showModal(`
     <div class="modal-title">Add Project Team Member</div>
@@ -1060,10 +1206,7 @@ function openEmailSearch() {
       <input id="email-search-input" type="text" placeholder="Type a name or email..." autocomplete="off" />
       <div id="email-suggestions" class="email-suggestions hidden"></div>
     </div>
-    <div class="modal-actions" style="margin-top: 24px;">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>
-  `);
+    <div class="modal-actions"><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>`);
   setTimeout(() => {
     const input = document.getElementById('email-search-input');
     if (input) {
@@ -1078,11 +1221,7 @@ function onEmailSearchInput(e) {
   const q = e.target.value.trim();
   const sug = document.getElementById('email-suggestions');
   clearTimeout(emailSearchTimer);
-  if (q.length < 2) {
-    sug.classList.add('hidden');
-    sug.innerHTML = '';
-    return;
-  }
+  if (q.length < 2) { sug.classList.add('hidden'); sug.innerHTML = ''; return; }
   sug.classList.remove('hidden');
   sug.innerHTML = '<div class="email-suggestion-loading"><div class="spinner-sm"></div> Searching...</div>';
   emailSearchTimer = setTimeout(() => searchTenantUsers(q), 300);
@@ -1092,12 +1231,8 @@ function onEmailSearchKeydown(e) {
   if (e.key === 'Enter') {
     e.preventDefault();
     const v = e.target.value.trim();
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
-      addTeamMember({ email: v, name: v });
-    }
-  } else if (e.key === 'Escape') {
-    closeModal();
-  }
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) addTeamMember({ email: v, name: v.split('@')[0] });
+  } else if (e.key === 'Escape') closeModal();
 }
 
 async function searchTenantUsers(query) {
@@ -1106,101 +1241,63 @@ async function searchTenantUsers(query) {
   try {
     const q = query.replace(/'/g, "''");
     const filter = `startswith(displayName,'${q}') or startswith(mail,'${q}') or startswith(userPrincipalName,'${q}')`;
-    const result = await graphFetch(
-      `/users?$filter=${encodeURIComponent(filter)}&$top=10&$select=displayName,mail,userPrincipalName`
-    );
+    const result = await graphFetch(`/users?$filter=${encodeURIComponent(filter)}&$top=10&$select=displayName,mail,userPrincipalName`);
     const users = (result.value || []).filter(u => u.mail || u.userPrincipalName);
-    if (users.length === 0) {
-      sug.innerHTML = '<div class="email-suggestion-empty">No matches. Press Enter to add as a custom email.</div>';
-      return;
-    }
+    if (users.length === 0) { sug.innerHTML = '<div class="email-suggestion-empty">No matches. Press Enter to add as a custom email.</div>'; return; }
     sug.innerHTML = users.map((u, i) => `
       <div class="email-suggestion" data-idx="${i}">
         <div class="email-suggestion-name">${escapeHtml(u.displayName || u.mail)}</div>
         <div class="email-suggestion-mail">${escapeHtml(u.mail || u.userPrincipalName)}</div>
-      </div>
-    `).join('');
+      </div>`).join('');
     sug.querySelectorAll('.email-suggestion').forEach((el, i) => {
-      el.addEventListener('click', () => {
-        const u = users[i];
-        addTeamMember({ email: (u.mail || u.userPrincipalName).toLowerCase(), name: u.displayName });
-      });
+      el.addEventListener('click', () => { const u = users[i]; addTeamMember({ email: (u.mail || u.userPrincipalName).toLowerCase(), name: u.displayName }); });
     });
-  } catch (err) {
-    console.error('Email search error:', err);
-    sug.innerHTML = '<div class="email-suggestion-empty">Search failed. Type the full email and press Enter to add it manually.</div>';
-  }
+  } catch (err) { console.error(err); sug.innerHTML = '<div class="email-suggestion-empty">Search failed. Type the full email and press Enter.</div>'; }
 }
 
 function addTeamMember(member) {
   const lower = member.email.toLowerCase();
-  if (projectTeamEmails.some(c => c.email.toLowerCase() === lower)) {
-    showToast('Already Added', 'error');
-    return;
-  }
+  if (projectTeamEmails.some(c => c.email.toLowerCase() === lower)) { showToast('Already Added', 'error'); return; }
   projectTeamEmails.push({ email: lower, name: member.name, locked: false });
-  closeModal();
-  renderTeamChips();
+  closeModal(); renderTeamChips();
 }
 
-// ============ NEW JOB SUBMIT ============
 async function submitNewJob() {
-  const codeEl = document.getElementById('nj-code');
-  const nameEl = document.getElementById('nj-name');
-  const addressEl = document.getElementById('nj-address');
-  const code = codeEl.value.trim();
-  const name = nameEl.value.trim().toUpperCase();
-  const address = addressEl.value.trim();
-
+  const codeEl = document.getElementById('nj-code'); const nameEl = document.getElementById('nj-name'); const addressEl = document.getElementById('nj-address');
+  const code = codeEl.value.trim(); const name = nameEl.value.trim().toUpperCase(); const address = addressEl.value.trim();
   ['nj-code-err', 'nj-name-err', 'nj-address-err'].forEach(id => document.getElementById(id).classList.add('hidden'));
   [codeEl, nameEl, addressEl].forEach(el => el.classList.remove('invalid'));
-
   let valid = true;
   if (!CONFIG.codeRegex.test(code)) { showFieldError('nj-code', 'Must Be Exactly 4 Digits'); valid = false; }
   if (!CONFIG.nameRegex.test(name)) { showFieldError('nj-name', 'Must Start With A Letter, 2-5 Capitals/Digits'); valid = false; }
   if (address.length < 5) { showFieldError('nj-address', 'Address Required'); valid = false; }
   if (/[\\\/:*?"<>|]/.test(address)) { showFieldError('nj-address', 'Address Contains Illegal Characters'); valid = false; }
   if (!valid) return;
-
-  // Duplicate check
   try {
     const siteId = await getAhSiteId();
     const result = await graphFetch(`/sites/${siteId}/drive/root/children?$top=200&$select=name,folder`);
     const items = result.value || [];
-    let exactDup = false;
-    let nameDupExisting = null;
+    let exactDup = false; let nameDupExisting = null;
     for (const it of items) {
       if (!it.folder) continue;
-      const m = it.name.match(CONFIG.jobFolderPattern);
-      if (!m) continue;
-      const eCode = m[1];
-      const eName = m[2].toUpperCase();
+      const m = it.name.match(CONFIG.jobFolderPattern); if (!m) continue;
+      const eCode = m[1]; const eName = m[2].toUpperCase();
       if (eCode === code && eName === name) { exactDup = true; break; }
-      if (eName === name) { nameDupExisting = m; }
+      if (eName === name) nameDupExisting = m;
     }
     if (exactDup) { showFieldError('nj-code', `Job ${code} ${name} Already Exists`); return; }
     if (nameDupExisting) {
-      const proceed = await confirmModal(
-        'Duplicate Job Name',
-        `Another job named <strong>${escapeHtml(name)}</strong> already exists: <strong>${escapeHtml(nameDupExisting[1])} ${escapeHtml(nameDupExisting[2])}</strong>.<br><br>Continue creating this new job anyway?`,
-        'Continue', 'Cancel'
-      );
+      const proceed = await confirmModal('Duplicate Job Name', `Another job named <strong>${escapeHtml(name)}</strong> already exists: <strong>${escapeHtml(nameDupExisting[1])} ${escapeHtml(nameDupExisting[2])}</strong>.<br><br>Continue creating this new job anyway?`, 'Continue', 'Cancel');
       if (!proceed) return;
     }
-  } catch (err) {
-    console.error('Duplicate check error:', err);
-    showToast('Could Not Verify Duplicates', 'error');
-    return;
-  }
-
+  } catch (err) { console.error(err); showToast('Could Not Verify Duplicates', 'error'); return; }
   document.getElementById('nj-submit').disabled = true;
   await runJobCreation(code, name, address);
 }
 
 function showFieldError(fieldId, msg) {
   const errEl = document.getElementById(fieldId + '-err');
-  errEl.textContent = msg;
-  errEl.classList.remove('hidden');
+  errEl.textContent = msg; errEl.classList.remove('hidden');
   document.getElementById(fieldId).classList.add('invalid');
 }
 
@@ -1209,190 +1306,459 @@ async function runJobCreation(code, name, address) {
   const ahOfficeFolder = `${code} ${name} - ${address}`;
   const tradiesSubfolder = `AAA Docs for Tradies ${name}`;
   const budgetTargetName = `0 Budget Control ${name}.xlsx`;
-
   const steps = [];
-  steps.push({
-    id: 's-ahsite-root',
-    label: `Create AH Site folder: ${ahSiteFolder}`,
-    run: async () => {
-      const siteId = await getAhSiteId();
-      await ensureFolder(siteId, '', ahSiteFolder);
-    }
-  });
+  steps.push({ id: 's-ahsite-root', label: `Create AH Site folder: ${ahSiteFolder}`, run: async () => { const siteId = await getAhSiteId(); await ensureFolder(siteId, '', ahSiteFolder); }});
   for (const sub of CONFIG.ahSiteSubfolders) {
     const finalName = sub === 'AAA Docs for Tradies' ? tradiesSubfolder : sub;
-    steps.push({
-      id: `s-ahsite-${sub.replace(/\s+/g, '-').toLowerCase()}`,
-      label: `Create subfolder: ${finalName}`,
-      run: async () => {
-        const siteId = await getAhSiteId();
-        await ensureFolder(siteId, ahSiteFolder, finalName);
-      }
-    });
+    steps.push({ id: `s-ahsite-${sub.replace(/\s+/g, '-').toLowerCase()}`, label: `Create subfolder: ${finalName}`, run: async () => { const siteId = await getAhSiteId(); await ensureFolder(siteId, ahSiteFolder, finalName); }});
   }
-  steps.push({
-    id: 's-budget',
-    label: `Copy budget template: ${budgetTargetName}`,
-    run: async () => {
-      const siteId = await getAhSiteId();
-      const existing = await graphFetch(
-        `/sites/${siteId}/drive/root:/${encodeUriPath(`${ahSiteFolder}/Quote/${budgetTargetName}`)}`
-      ).catch(err => err.status === 404 ? null : Promise.reject(err));
-      if (existing) return;
-      await copyFile(
-        siteId,
-        `${CONFIG.commonDocsPath}/${CONFIG.budgetTemplateName}`,
-        `${ahSiteFolder}/Quote`,
-        budgetTargetName
-      );
-    }
-  });
-  steps.push({
-    id: 's-tracker',
-    label: 'Initialise RFQ tracker',
-    run: async () => {
-      const siteId = await getAhSiteId();
-      const tracker = {
-        version: 1,
-        jobCode: code, jobName: name, address,
-        projectTeamEmails: projectTeamEmails.map(c => c.email),
-        rfqs: [],
-        createdAt: new Date().toISOString(),
-        createdBy: currentUserEmail
-      };
-      await uploadJson(siteId, `${ahSiteFolder}/Quote`, 'rfq-tracker.json', tracker);
-    }
-  });
-  steps.push({
-    id: 's-ahoffice-root',
-    label: `Create AH Office folder: ${ahOfficeFolder}`,
-    run: async () => {
-      const officeId = await getAhOfficeId();
-      await ensureFolder(officeId, '', ahOfficeFolder);
-    }
-  });
+  steps.push({ id: 's-budget', label: `Copy budget template: ${budgetTargetName}`, run: async () => {
+    const siteId = await getAhSiteId();
+    const existing = await graphFetch(`/sites/${siteId}/drive/root:/${encodeUriPath(`${ahSiteFolder}/Quote/${budgetTargetName}`)}`).catch(err => err.status === 404 ? null : Promise.reject(err));
+    if (existing) return;
+    await copyFile(siteId, `${CONFIG.commonDocsPath}/${CONFIG.budgetTemplateName}`, `${ahSiteFolder}/Quote`, budgetTargetName);
+  }});
+  steps.push({ id: 's-tracker', label: 'Initialise RFQ tracker', run: async () => {
+    const siteId = await getAhSiteId();
+    const tracker = { version: 1, jobCode: code, jobName: name, address, projectTeamEmails: projectTeamEmails.map(c => c.email), rfqs: [], createdAt: new Date().toISOString(), createdBy: currentUserEmail };
+    await uploadJson(siteId, `${ahSiteFolder}/Quote`, 'rfq-tracker.json', tracker);
+  }});
+  steps.push({ id: 's-ahoffice-root', label: `Create AH Office folder: ${ahOfficeFolder}`, run: async () => { const officeId = await getAhOfficeId(); await ensureFolder(officeId, '', ahOfficeFolder); }});
   for (const sub of CONFIG.ahOfficeSubfolders) {
-    steps.push({
-      id: `s-ahoffice-${sub.replace(/\s+/g, '-').toLowerCase()}`,
-      label: `Create AH Office subfolder: ${sub}`,
-      run: async () => {
-        const officeId = await getAhOfficeId();
-        await ensureFolder(officeId, ahOfficeFolder, sub);
-      }
-    });
+    steps.push({ id: `s-ahoffice-${sub.replace(/\s+/g, '-').toLowerCase()}`, label: `Create AH Office subfolder: ${sub}`, run: async () => { const officeId = await getAhOfficeId(); await ensureFolder(officeId, ahOfficeFolder, sub); }});
   }
-  steps.push({
-    id: 's-audit',
-    label: 'Log to audit trail',
-    run: async () => {
-      await logAudit('JOB_CREATED', `${code} ${name}`, {
-        ahSiteFolder, ahOfficeFolder,
-        projectTeamEmails: projectTeamEmails.map(c => c.email)
-      });
-    }
-  });
+  steps.push({ id: 's-audit', label: 'Log to audit trail', run: async () => { await logAudit('JOB_CREATED', `${code} ${name}`, { ahSiteFolder, ahOfficeFolder, projectTeamEmails: projectTeamEmails.map(c => c.email) }); }});
 
   const progressEl = document.getElementById('nj-progress');
   const progressList = document.getElementById('nj-progress-list');
   progressEl.classList.remove('hidden');
-  progressList.innerHTML = steps.map(s => `
-    <div class="progress-item pending" id="prog-${s.id}">
-      <div class="progress-icon">·</div>
-      <div>${escapeHtml(s.label)}</div>
-    </div>
-  `).join('');
+  progressList.innerHTML = steps.map(s => `<div class="progress-item pending" id="prog-${s.id}"><div class="progress-icon">·</div><div>${escapeHtml(s.label)}</div></div>`).join('');
 
   let failedStep = null;
   for (const step of steps) {
     const el = document.getElementById('prog-' + step.id);
-    el.classList.remove('pending');
-    el.classList.add('active');
+    el.classList.remove('pending'); el.classList.add('active');
     el.querySelector('.progress-icon').innerHTML = '<div class="spinner-sm"></div>';
     try {
       await step.run();
-      el.classList.remove('active');
-      el.classList.add('done');
-      el.querySelector('.progress-icon').innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>`;
+      el.classList.remove('active'); el.classList.add('done');
+      el.querySelector('.progress-icon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
     } catch (err) {
       console.error(`Step ${step.id} failed:`, err);
-      el.classList.remove('active');
-      el.classList.add('failed');
-      el.querySelector('.progress-icon').innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>`;
-      failedStep = { step, err };
-      break;
+      el.classList.remove('active'); el.classList.add('failed');
+      el.querySelector('.progress-icon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      failedStep = { step, err }; break;
     }
   }
-
-  // Remove any old retry block
-  const oldRetry = document.getElementById('nj-retry-block');
-  if (oldRetry) oldRetry.remove();
-
+  const oldRetry = document.getElementById('nj-retry-block'); if (oldRetry) oldRetry.remove();
   if (failedStep) {
     const errMsg = failedStep.err.message || String(failedStep.err);
     const retryBlock = document.createElement('div');
     retryBlock.id = 'nj-retry-block';
-    retryBlock.innerHTML = `
-      <div class="form-error mt-12" style="display: block;">${escapeHtml(errMsg)}</div>
-      <div class="btn-row mt-12">
-        <button class="btn-primary" id="nj-retry">Retry</button>
-        <button class="btn-secondary" onclick="goBack()">Back To Jobs</button>
-      </div>`;
+    retryBlock.innerHTML = `<div class="form-error mt-12" style="display: block;">${escapeHtml(errMsg)}</div><div class="btn-row mt-12"><button class="btn-primary" id="nj-retry">Retry</button><button class="btn-secondary" onclick="goBack()">Back To Jobs</button></div>`;
     progressList.parentElement.appendChild(retryBlock);
     document.getElementById('nj-retry').addEventListener('click', () => runJobCreation(code, name, address));
     document.getElementById('nj-submit').disabled = false;
   } else {
     showToast('Job Created', 'success');
-    setTimeout(() => {
-      navStack.pop();
-      showScreen('jobs-screen');
-      loadJobs();
-    }, 800);
+    setTimeout(() => { navStack.pop(); showScreen('jobs-screen'); loadJobs(); }, 800);
   }
 }
 
-// ============ MODAL ============
-function showModal(html) {
-  document.getElementById('modal-content').innerHTML = html;
-  document.getElementById('modal-backdrop').classList.add('active');
+// ============= SETTINGS =============
+async function openSettings() {
+  navigate('settings-screen', {});
+  // Tab handlers
+  document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const which = tab.dataset.tab;
+      document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+      document.getElementById('settings-' + which).classList.add('active');
+      if (which === 'suppliers') loadSuppliersTab();
+      if (which === 'signature') loadSignatureTab();
+    };
+  });
+  await loadTradesTab();
 }
-function closeModal() {
-  document.getElementById('modal-backdrop').classList.remove('active');
+
+async function loadTradesTab() {
+  const container = document.getElementById('trades-list');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading...</div></div>';
+  try {
+    await loadAppConfig();
+    if (!appConfig.trades || appConfig.trades.length === 0) {
+      // First-run: auto-import from Excel
+      container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Importing Trades From Budget Template...</div></div>';
+      await importTradesFromExcel(false);
+    }
+    renderTrades();
+  } catch (err) {
+    console.error('Trades load error:', err);
+    container.innerHTML = `<div class="empty-state"><div style="color: var(--red);">Failed To Load</div><div class="text-small mt-8">${escapeHtml(err.message)}</div><button class="btn-secondary mt-16" onclick="loadTradesTab()">Try Again</button></div>`;
+  }
 }
-document.getElementById('modal-backdrop').addEventListener('click', (e) => {
-  if (e.target.id === 'modal-backdrop') closeModal();
-});
+
+async function importTradesFromExcel(isReimport) {
+  const siteId = await getAhSiteId();
+  const buf = await readXlsx(siteId, CONFIG.commonDocsPath, CONFIG.budgetTemplateName);
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]]; // first sheet (Project Control)
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  // header row 0; data starts row 1
+  // Column A = Category (idx 0), Column C = Description (idx 2)
+  const categoriesMap = new Map(); // category -> Set of descriptions
+  for (let i = 1; i < rows.length; i++) {
+    const cat = rows[i][0]; const desc = rows[i][2];
+    if (cat && typeof cat === 'string') {
+      const c = cat.trim();
+      if (!categoriesMap.has(c)) categoriesMap.set(c, new Set());
+      if (desc && typeof desc === 'string') categoriesMap.get(c).add(desc.trim());
+    }
+  }
+  // Build trade entries; preserve existing settings on re-import
+  const existingByCategory = new Map((appConfig.trades || []).map(t => [t.category, t]));
+  const newTrades = [];
+  for (const [cat, descs] of categoriesMap) {
+    const existing = existingByCategory.get(cat);
+    if (existing) {
+      // Preserve existing entry; refresh available descriptions
+      existing.availableDescriptions = Array.from(descs).sort();
+      newTrades.push(existing);
+    } else {
+      newTrades.push({
+        category: cat,
+        type: guessType(cat),
+        budgetRowDescription: null,
+        daysToRespond: CONFIG.defaultDaysToRespond,
+        daysToFollowup: CONFIG.defaultDaysToFollowup,
+        sowTemplate: null,
+        emailTemplate: null,
+        availableDescriptions: Array.from(descs).sort()
+      });
+    }
+  }
+  appConfig.trades = newTrades;
+  await saveAppConfig();
+  if (isReimport) {
+    showToast(`Imported ${newTrades.length} Categories`, 'success');
+    await logAudit('TRADES_REIMPORTED', 'Excel template', { count: newTrades.length });
+  }
+}
+
+function guessType(category) {
+  // Heuristic: anything mentioning prelims, hire, services, cleaning, totals = skip
+  // Material-style categories that have suppliers like Windows, Tiles, etc.
+  const c = category.toLowerCase();
+  if (/preliminar|hire item|temporary|cleaning|^total$|surveyor|misc/.test(c)) return 'skip';
+  if (/^window|tile|skylight|insulation|paving|clothes|stair$|ffe|landscaping/.test(c)) return 'material';
+  return 'trade';
+}
+
+async function reimportTradesFromExcel() {
+  const proceed = await confirmModal(
+    'Re-Import From Excel',
+    'This rescans the budget template and adds any new categories found. Existing settings (type, mappings, defaults) are preserved.<br><br>Continue?',
+    'Re-Import', 'Cancel'
+  );
+  if (!proceed) return;
+  const container = document.getElementById('trades-list');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Re-importing...</div></div>';
+  try { await importTradesFromExcel(true); renderTrades(); }
+  catch (err) { console.error(err); showToast('Re-Import Failed', 'error'); renderTrades(); }
+}
+
+function renderTrades() {
+  const container = document.getElementById('trades-list');
+  if (!appConfig.trades || appConfig.trades.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div>No Trades Yet</div><div class="text-small mt-8">Use the Re-Import button to seed from the budget template.</div></div>`;
+    return;
+  }
+  // Group: trades + materials together (sortable), skipped at bottom
+  const sorted = [...appConfig.trades].sort((a, b) => {
+    const aSkip = a.type === 'skip' ? 1 : 0; const bSkip = b.type === 'skip' ? 1 : 0;
+    if (aSkip !== bSkip) return aSkip - bSkip;
+    return a.category.localeCompare(b.category);
+  });
+  container.innerHTML = sorted.map((t, idx) => {
+    const realIdx = appConfig.trades.indexOf(t);
+    const descOptions = (t.availableDescriptions || []).map(d =>
+      `<option value="${escapeHtml(d)}"${t.budgetRowDescription === d ? ' selected' : ''}>${escapeHtml(d)}</option>`
+    ).join('');
+    return `
+      <div class="trade-row${t.type === 'skip' ? ' skipped' : ''}" data-idx="${realIdx}">
+        <div>
+          <div class="trade-name">${escapeHtml(t.category)}</div>
+          <div class="trade-meta">${(t.availableDescriptions || []).length} budget rows</div>
+        </div>
+        <select class="trade-type">
+          <option value="trade"${t.type === 'trade' ? ' selected' : ''}>Trade</option>
+          <option value="material"${t.type === 'material' ? ' selected' : ''}>Material</option>
+          <option value="skip"${t.type === 'skip' ? ' selected' : ''}>Skip</option>
+        </select>
+        <select class="trade-budget" ${t.type === 'skip' ? 'disabled' : ''} title="Budget row description to write quote into">
+          <option value="">— Select Budget Row —</option>
+          ${descOptions}
+        </select>
+        <div class="form-row-mini">
+          <input class="input-mini trade-days-respond" type="number" min="1" max="60" value="${t.daysToRespond || CONFIG.defaultDaysToRespond}" title="Days to respond" />
+          <span class="text-muted text-small">/</span>
+          <input class="input-mini trade-days-followup" type="number" min="1" max="60" value="${t.daysToFollowup || CONFIG.defaultDaysToFollowup}" title="Days until follow-up" />
+        </div>
+        <button class="btn-secondary small" onclick="saveTradeRow(${realIdx})">Save</button>
+      </div>`;
+  }).join('');
+  // Attach instant-change updates
+  container.querySelectorAll('.trade-row').forEach(row => {
+    const idx = parseInt(row.dataset.idx, 10);
+    row.querySelector('.trade-type').addEventListener('change', (e) => {
+      appConfig.trades[idx].type = e.target.value;
+      const budgetSelect = row.querySelector('.trade-budget');
+      budgetSelect.disabled = e.target.value === 'skip';
+      if (e.target.value === 'skip') row.classList.add('skipped');
+      else row.classList.remove('skipped');
+    });
+  });
+}
+
+async function saveTradeRow(idx) {
+  const row = document.querySelector(`.trade-row[data-idx="${idx}"]`);
+  if (!row) return;
+  const t = appConfig.trades[idx];
+  t.type = row.querySelector('.trade-type').value;
+  t.budgetRowDescription = row.querySelector('.trade-budget').value || null;
+  t.daysToRespond = parseInt(row.querySelector('.trade-days-respond').value, 10) || CONFIG.defaultDaysToRespond;
+  t.daysToFollowup = parseInt(row.querySelector('.trade-days-followup').value, 10) || CONFIG.defaultDaysToFollowup;
+  try {
+    await saveAppConfig();
+    await logAudit('TRADE_UPDATED', t.category, { type: t.type, budgetRow: t.budgetRowDescription });
+    showToast(`${t.category} Saved`, 'success');
+  } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
+}
+
+// ============= SUPPLIERS =============
+async function loadSuppliersTab() {
+  await loadAppConfig();
+  await loadSuppliers();
+  // Populate filter dropdown
+  const tradeFilter = document.getElementById('supplier-trade-filter');
+  const activeTrades = (appConfig.trades || []).filter(t => t.type !== 'skip').map(t => t.category).sort();
+  tradeFilter.innerHTML = '<option value="">All Trades</option>' + activeTrades.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  // Hook search
+  document.getElementById('supplier-search').oninput = renderSuppliers;
+  document.getElementById('supplier-trade-filter').onchange = renderSuppliers;
+  document.getElementById('supplier-active-filter').onchange = renderSuppliers;
+  renderSuppliers();
+}
+
+function renderSuppliers() {
+  const container = document.getElementById('suppliers-list');
+  const search = document.getElementById('supplier-search').value.toLowerCase().trim();
+  const tradeFilter = document.getElementById('supplier-trade-filter').value;
+  const activeFilter = document.getElementById('supplier-active-filter').value;
+  let list = suppliersData.suppliers || [];
+  if (search) list = list.filter(s =>
+    (s.companyName || '').toLowerCase().includes(search) ||
+    (s.contactName || '').toLowerCase().includes(search) ||
+    (s.email || '').toLowerCase().includes(search)
+  );
+  if (tradeFilter) list = list.filter(s => (s.trades || []).includes(tradeFilter));
+  if (activeFilter === 'active') list = list.filter(s => s.active !== false);
+  else if (activeFilter === 'inactive') list = list.filter(s => s.active === false);
+  if (list.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div>No Suppliers</div><div class="text-small mt-8">Click "Add Supplier" to add one.</div></div>`;
+    return;
+  }
+  list.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
+  container.innerHTML = list.map(s => {
+    const realIdx = suppliersData.suppliers.indexOf(s);
+    return `
+      <div class="supplier-card${s.active === false ? ' inactive' : ''}">
+        <div class="supplier-info">
+          <div class="supplier-name">${escapeHtml(s.companyName || s.contactName || '?')}</div>
+          <div class="supplier-meta">${escapeHtml(s.contactName || '')}${s.contactName && s.email ? ' · ' : ''}${escapeHtml(s.email || '')}${s.phone ? ' · ' + escapeHtml(s.phone) : ''}</div>
+          <div class="supplier-trades">
+            ${(s.trades || []).map(t => `<span class="trade-tag">${escapeHtml(t)}</span>`).join('')}
+            ${s.active === false ? '<span class="trade-tag" style="background: var(--bg-3); color: var(--text-3);">Inactive</span>' : ''}
+          </div>
+        </div>
+        <div class="supplier-actions">
+          <button class="btn-secondary small" onclick="openSupplierEditor(${realIdx})">Edit</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openSupplierEditor(idx) {
+  const isNew = idx === null;
+  const sup = isNew ? { id: 'sup-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), companyName: '', contactName: '', email: '', phone: '', trades: [], notes: '', active: true } : { ...suppliersData.suppliers[idx] };
+  editingSupplier = { idx, supplier: sup };
+  supplierMultiSelectTrades = [...(sup.trades || [])];
+  showModal(`
+    <div class="modal-title">${isNew ? 'Add Supplier' : 'Edit Supplier'}</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Company Name</label>
+        <input id="sup-company" type="text" value="${escapeHtml(sup.companyName)}" placeholder="Bob's Concreting" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contact First Name</label>
+        <input id="sup-contact" type="text" value="${escapeHtml(sup.contactName)}" placeholder="Bob" />
+        <div class="form-hint">Used in greeting "Hi Bob,"</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input id="sup-email" type="email" value="${escapeHtml(sup.email)}" placeholder="bob@bobsconcreting.com.au" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone (Optional)</label>
+        <input id="sup-phone" type="text" value="${escapeHtml(sup.phone)}" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Trades / Materials Covered</label>
+      <div class="multi-chips" id="sup-trades-chips"></div>
+      <div class="form-hint">Click trades below to toggle. A supplier can cover multiple trades.</div>
+      <div class="mt-8" id="sup-trades-picker" style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto;padding:8px;background:var(--bg-3);border:1px solid var(--line);border-radius:8px;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (Optional)</label>
+      <textarea id="sup-notes" rows="3">${escapeHtml(sup.notes || '')}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label flex-row" style="gap:10px;cursor:pointer;" onclick="toggleSupActive()">
+        <span class="toggle${sup.active !== false ? ' on' : ''}" id="sup-active-toggle"></span>
+        <span>Active</span>
+      </label>
+      <div class="form-hint">Inactive suppliers won't appear in the RFQ supplier picker.</div>
+    </div>
+    <div class="modal-actions">
+      ${isNew ? '' : '<button class="btn-danger small" style="margin-right:auto;" onclick="deleteSupplier()">Delete</button>'}
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveSupplier()">Save</button>
+    </div>`);
+  renderSupplierTradesPicker();
+  renderSupplierTradeChips();
+}
+
+function renderSupplierTradesPicker() {
+  const picker = document.getElementById('sup-trades-picker');
+  const activeCategories = (appConfig.trades || []).filter(t => t.type !== 'skip').map(t => t.category).sort();
+  picker.innerHTML = activeCategories.map(c => {
+    const selected = supplierMultiSelectTrades.includes(c);
+    return `<button type="button" class="${selected ? 'multi-chip' : 'btn-secondary small'}" data-cat="${escapeHtml(c)}" style="${selected ? '' : 'padding:4px 10px;font-size:12px;border-radius:14px;'}">${selected ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}${escapeHtml(c)}</button>`;
+  }).join('');
+  picker.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const c = btn.dataset.cat;
+      const i = supplierMultiSelectTrades.indexOf(c);
+      if (i >= 0) supplierMultiSelectTrades.splice(i, 1);
+      else supplierMultiSelectTrades.push(c);
+      renderSupplierTradesPicker(); renderSupplierTradeChips();
+    });
+  });
+}
+
+function renderSupplierTradeChips() {
+  const chipsEl = document.getElementById('sup-trades-chips');
+  if (!chipsEl) return;
+  if (supplierMultiSelectTrades.length === 0) {
+    chipsEl.innerHTML = '<span class="text-muted text-small">No trades selected</span>';
+    return;
+  }
+  chipsEl.innerHTML = supplierMultiSelectTrades.map((t) => `
+    <span class="multi-chip">
+      ${escapeHtml(t)}
+      <span class="x" data-cat="${escapeHtml(t)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+    </span>`).join('');
+  chipsEl.querySelectorAll('.x').forEach(x => x.addEventListener('click', () => {
+    const c = x.dataset.cat;
+    const i = supplierMultiSelectTrades.indexOf(c);
+    if (i >= 0) supplierMultiSelectTrades.splice(i, 1);
+    renderSupplierTradesPicker(); renderSupplierTradeChips();
+  }));
+}
+
+function toggleSupActive() {
+  const tog = document.getElementById('sup-active-toggle');
+  tog.classList.toggle('on');
+}
+
+async function saveSupplier() {
+  const sup = editingSupplier.supplier;
+  sup.companyName = document.getElementById('sup-company').value.trim();
+  sup.contactName = document.getElementById('sup-contact').value.trim();
+  sup.email = document.getElementById('sup-email').value.trim().toLowerCase();
+  sup.phone = document.getElementById('sup-phone').value.trim();
+  sup.notes = document.getElementById('sup-notes').value.trim();
+  sup.trades = [...supplierMultiSelectTrades];
+  sup.active = document.getElementById('sup-active-toggle').classList.contains('on');
+  if (!sup.companyName) { showToast('Company Name Required', 'error'); return; }
+  if (!sup.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sup.email)) { showToast('Valid Email Required', 'error'); return; }
+  if (sup.trades.length === 0) { showToast('At Least One Trade Required', 'error'); return; }
+  if (editingSupplier.idx === null) suppliersData.suppliers.push(sup);
+  else suppliersData.suppliers[editingSupplier.idx] = sup;
+  try {
+    await saveSuppliers();
+    await logAudit(editingSupplier.idx === null ? 'SUPPLIER_ADDED' : 'SUPPLIER_UPDATED', sup.companyName, { email: sup.email, trades: sup.trades });
+    closeModal(); renderSuppliers();
+    showToast('Supplier Saved', 'success');
+  } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
+}
+
+async function deleteSupplier() {
+  const proceed = await confirmModal('Delete Supplier?', `Delete <strong>${escapeHtml(editingSupplier.supplier.companyName)}</strong>? This cannot be undone.<br><br>Tip: marking as Inactive instead keeps history.`, 'Delete', 'Cancel');
+  if (!proceed) return;
+  const removed = suppliersData.suppliers.splice(editingSupplier.idx, 1)[0];
+  try {
+    await saveSuppliers();
+    await logAudit('SUPPLIER_DELETED', removed.companyName, { email: removed.email });
+    closeModal(); renderSuppliers();
+    showToast('Supplier Deleted', 'success');
+  } catch (err) { console.error(err); showToast('Delete Failed', 'error'); }
+}
+
+// ============= SIGNATURE =============
+async function loadSignatureTab() {
+  await loadAppConfig();
+  document.getElementById('sig-title').value = appConfig.signature.title || '';
+  document.getElementById('sig-body').value = appConfig.signature.body || '';
+}
+
+async function saveSignature() {
+  appConfig.signature = {
+    title: document.getElementById('sig-title').value.trim(),
+    body: document.getElementById('sig-body').value
+  };
+  try {
+    await saveAppConfig();
+    await logAudit('SIGNATURE_UPDATED', currentUserEmail, null);
+    showToast('Signature Saved', 'success');
+  } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
+}
+
+// ============= MODAL =============
+function showModal(html) { document.getElementById('modal-content').innerHTML = html; document.getElementById('modal-backdrop').classList.add('active'); }
+function closeModal() { document.getElementById('modal-backdrop').classList.remove('active'); }
+document.getElementById('modal-backdrop').addEventListener('click', (e) => { if (e.target.id === 'modal-backdrop') closeModal(); });
 
 function confirmModal(title, body, okLabel, cancelLabel) {
   return new Promise(resolve => {
-    showModal(`
-      <div class="modal-title">${escapeHtml(title)}</div>
-      <div class="modal-body">${body}</div>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="cm-cancel">${escapeHtml(cancelLabel || 'Cancel')}</button>
-        <button class="btn-primary" id="cm-ok">${escapeHtml(okLabel || 'OK')}</button>
-      </div>
-    `);
+    showModal(`<div class="modal-title">${escapeHtml(title)}</div><div class="modal-body">${body}</div><div class="modal-actions"><button class="btn-secondary" id="cm-cancel">${escapeHtml(cancelLabel || 'Cancel')}</button><button class="btn-primary" id="cm-ok">${escapeHtml(okLabel || 'OK')}</button></div>`);
     document.getElementById('cm-ok').addEventListener('click', () => { closeModal(); resolve(true); });
     document.getElementById('cm-cancel').addEventListener('click', () => { closeModal(); resolve(false); });
   });
 }
 
-function toggleUserMenu() {
-  if (confirm(`Signed in as ${currentAccount.username}\n\nSign out?`)) logout();
-}
+function toggleUserMenu() { if (confirm(`Signed in as ${currentAccount.username}\n\nSign out?`)) logout(); }
 
-// ============ UTILS ============
 function showToast(msg, type) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = '';
+  t.textContent = msg; t.className = '';
   if (type) t.classList.add(type);
   t.classList.add('show');
   clearTimeout(t._timer);
@@ -1404,7 +1770,6 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Force-uppercase Job Name
 document.addEventListener('DOMContentLoaded', () => {
   const njName = document.getElementById('nj-name');
   if (njName) {
@@ -1416,11 +1781,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// SW
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('SW registration failed:', err));
-  });
+  window.addEventListener('load', () => { navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('SW registration failed:', err)); });
 }
 
 initAuth();
