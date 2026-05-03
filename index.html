@@ -447,6 +447,8 @@ let cachedAhSiteId = null;
 // ============================================================
 async function initAuth() {
   try {
+    // MSAL v3 requires initialize() before any other API call
+    await msalInstance.initialize();
     const response = await msalInstance.handleRedirectPromise();
     if (response && response.account) {
       msalInstance.setActiveAccount(response.account);
