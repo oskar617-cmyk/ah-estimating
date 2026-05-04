@@ -1483,7 +1483,10 @@ async function loadCatalogTab() {
   try {
     await loadAppConfig();
     await loadSuppliers();
-    if (!appConfig.trades || appConfig.trades.length === 0) {
+    // First-run OR old-schema detection: re-import to get availableRows populated
+    const hasOldSchema = appConfig.trades && appConfig.trades.some(t => !t.availableRows);
+    const needsImport = !appConfig.trades || appConfig.trades.length === 0 || hasOldSchema;
+    if (needsImport) {
       container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Importing From Budget Template...</div></div>';
       await importCatalogFromExcel(false);
     }
@@ -1512,8 +1515,10 @@ async function importCatalogFromExcel(isReimport) {
       if (!categoriesMap.has(c)) categoriesMap.set(c, []);
       // Only count rows with at least a No or Description as actual line items
       if (no != null || (desc && typeof desc === 'string' && desc.trim())) {
+        // Strip non-breaking spaces (\xa0) and other whitespace from No.
+        const cleanNo = no != null ? String(no).replace(/[\s\xa0]+/g, '').trim() : null;
         categoriesMap.get(c).push({
-          no: no != null ? String(no).trim() : null,
+          no: cleanNo || null,
           description: desc ? String(desc).trim() : null,
           type: type ? String(type).trim() : null,
           rowIdx: i // 0-based index in `rows` array
@@ -1846,8 +1851,8 @@ function addNewCatalogItem() {
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">No.</label>
-        <input id="new-no-input" type="text" placeholder="Auto-Predicted" />
-        <div class="form-hint">Auto-fills as you type Category</div>
+        <input id="new-no-input" type="text" placeholder="Auto-Predicted" disabled style="opacity: 0.7;" />
+        <div class="form-hint">Auto-fills based on Category</div>
       </div>
       <div class="form-group">
         <label class="form-label">Type</label>
@@ -1855,6 +1860,7 @@ function addNewCatalogItem() {
           <option value="Material">Material</option>
           <option value="Labour">Labour</option>
           <option value="MatLab">MatLab</option>
+          <option value="Equipment">Equipment</option>
         </select>
       </div>
     </div>
