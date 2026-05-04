@@ -268,7 +268,7 @@
   /* ====== CATALOG (combined trades/suppliers) ====== */
   .catalog-header {
     display: grid;
-    grid-template-columns: 1fr 1.6fr 80px 80px auto;
+    grid-template-columns: 1fr 1.6fr 80px 80px 120px;
     gap: 12px;
     padding: 8px 12px;
     background: var(--bg-3);
@@ -281,6 +281,9 @@
     margin-bottom: 6px;
   }
   .catalog-header > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Pad first header past the expand arrow so it aligns with the category name text */
+  .catalog-header .col-category { padding-left: 30px; }
+  .catalog-header .col-days { text-align: center; }
   .catalog-header .col-actions { text-align: right; }
 
   .catalog-item {
@@ -292,7 +295,7 @@
   }
   .catalog-row {
     display: grid;
-    grid-template-columns: 1fr 1.6fr 80px 80px auto;
+    grid-template-columns: 1fr 1.6fr 80px 80px 120px;
     gap: 12px;
     padding: 10px 12px;
     align-items: center;
@@ -321,7 +324,17 @@
     border-radius: 10px; padding: 1px 8px;
     font-size: 11px; font-weight: 600;
     flex-shrink: 0;
+    margin-left: auto;
   }
+  .catalog-rename-inline {
+    width: 22px; height: 22px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .catalog-rename-inline svg { width: 11px; height: 11px; }
+  .catalog-name-cell:hover .catalog-rename-inline { opacity: 0.6; }
+  .catalog-rename-inline:hover { opacity: 1 !important; }
   .catalog-row select, .catalog-row input {
     padding: 6px 10px; font-size: 13px;
   }
@@ -1022,7 +1035,7 @@ async function loadAppConfig() {
 function createDefaultConfig() {
   return {
     version: 1,
-    trades: [], // each: {category, type: 'trade'|'material'|'skip', budgetRowDescription, daysToRespond, daysToFollowup, sowTemplate, emailTemplate}
+    trades: [], // each: {category, budgetRowNo, daysToRespond, daysToFollowup, sowTemplate, emailTemplate, availableRows: [{no, description, type}]}
     signature: {
       title: 'Estimator',
       body: 'Auzzie Homes Pty Ltd\n[Address]\nPhone: [Phone]'
@@ -1486,39 +1499,58 @@ async function importCatalogFromExcel(isReimport) {
   const siteId = await getAhSiteId();
   const buf = await readXlsx(siteId, CONFIG.commonDocsPath, CONFIG.budgetTemplateName);
   const wb = XLSX.read(buf, { type: 'array' });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const sheetName = wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-  const categoriesMap = new Map(); // category -> Set of descriptions
+  // Column A=Category(0), B=No(1), C=Description(2), D=Type(3)
+  // Capture each Category and the rows under it, including No
+  const categoriesMap = new Map(); // category -> array of {no, description, type, rowIdx}
   for (let i = 1; i < rows.length; i++) {
-    const cat = rows[i][0]; const desc = rows[i][2];
+    const cat = rows[i][0]; const no = rows[i][1]; const desc = rows[i][2]; const type = rows[i][3];
     if (cat && typeof cat === 'string') {
       const c = cat.trim();
-      if (!categoriesMap.has(c)) categoriesMap.set(c, new Set());
-      if (desc && typeof desc === 'string') categoriesMap.get(c).add(desc.trim());
+      if (!categoriesMap.has(c)) categoriesMap.set(c, []);
+      // Only count rows with at least a No or Description as actual line items
+      if (no != null || (desc && typeof desc === 'string' && desc.trim())) {
+        categoriesMap.get(c).push({
+          no: no != null ? String(no).trim() : null,
+          description: desc ? String(desc).trim() : null,
+          type: type ? String(type).trim() : null,
+          rowIdx: i // 0-based index in `rows` array
+        });
+      }
     }
   }
   const existingByCategory = new Map((appConfig.trades || []).map(t => [t.category, t]));
   const newTrades = [];
   let addedCount = 0;
-  for (const [cat, descs] of categoriesMap) {
+  for (const [cat, items] of categoriesMap) {
     const existing = existingByCategory.get(cat);
     if (existing) {
-      existing.availableDescriptions = Array.from(descs).sort();
+      // Refresh available rows; preserve the user's saved budgetRowNo selection
+      existing.availableRows = items;
+      // Migrate old `availableDescriptions` field if present (from previous build)
+      if (existing.availableDescriptions) delete existing.availableDescriptions;
+      // Migrate old `budgetRowDescription` field to budgetRowNo if needed
+      if (existing.budgetRowDescription && !existing.budgetRowNo) {
+        const match = items.find(it => it.description === existing.budgetRowDescription);
+        if (match) existing.budgetRowNo = match.no;
+        delete existing.budgetRowDescription;
+      }
       newTrades.push(existing);
     } else {
       newTrades.push({
         category: cat,
-        budgetRowDescription: null,
+        budgetRowNo: null,
         daysToRespond: CONFIG.defaultDaysToRespond,
         daysToFollowup: CONFIG.defaultDaysToFollowup,
         sowTemplate: null,
         emailTemplate: null,
-        availableDescriptions: Array.from(descs).sort()
+        availableRows: items
       });
       addedCount++;
     }
   }
-  // Preserve any custom-added trades that aren't in Excel
   for (const existing of appConfig.trades || []) {
     if (!categoriesMap.has(existing.category) && existing.custom) {
       newTrades.push(existing);
@@ -1527,7 +1559,7 @@ async function importCatalogFromExcel(isReimport) {
   appConfig.trades = newTrades;
   await saveAppConfig();
   if (isReimport) {
-    showToast(addedCount > 0 ? `Added ${addedCount} New Item${addedCount === 1 ? '' : 's'}` : 'No New Items Found', 'success');
+    showToast(addedCount > 0 ? `Added ${addedCount} New Categor${addedCount === 1 ? 'y' : 'ies'}` : 'No New Categories Found', 'success');
     await logAudit('CATALOG_REIMPORTED', 'Excel template', { totalCount: newTrades.length, newCount: addedCount });
   }
 }
@@ -1572,10 +1604,10 @@ function renderCatalog() {
 
   const headerHtml = `
     <div class="catalog-header">
-      <div>Item Name</div>
+      <div class="col-category">Category</div>
       <div>Budget Row</div>
-      <div class="text-center">Respond Days</div>
-      <div class="text-center">Follow-Up Days</div>
+      <div class="col-days">Respond Days</div>
+      <div class="col-days">Follow-Up Days</div>
       <div class="col-actions">Actions</div>
     </div>`;
 
@@ -1583,9 +1615,11 @@ function renderCatalog() {
     const realIdx = appConfig.trades.indexOf(t);
     const companies = getCompaniesForTrade(t.category);
     const expandedClass = expandedCatalogItems.has(t.category) ? ' expanded' : '';
-    const descOptions = (t.availableDescriptions || []).map(d =>
-      `<option value="${escapeHtml(d)}"${t.budgetRowDescription === d ? ' selected' : ''}>${escapeHtml(d)}</option>`
-    ).join('');
+    const rows = t.availableRows || [];
+    const descOptions = rows.map(r => {
+      const label = r.no ? `${r.no} — ${r.description || ''}` : (r.description || '');
+      return `<option value="${escapeHtml(r.no || '')}"${t.budgetRowNo === r.no ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
     return `
       <div class="catalog-item${expandedClass}" data-idx="${realIdx}">
         <div class="catalog-row">
@@ -1596,9 +1630,14 @@ function renderCatalog() {
               </svg>
             </div>
             <div class="catalog-name">${escapeHtml(t.category)}</div>
+            <button class="icon-btn-tiny catalog-rename-inline" data-action="rename" title="Rename Category">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+            </button>
             <div class="catalog-companies-count">${companies.length}</div>
           </div>
-          <select class="catalog-budget" title="Budget row description to write quote into">
+          <select class="catalog-budget" title="Budget row to write quote into">
             <option value="">— Select Budget Row —</option>
             ${descOptions}
           </select>
@@ -1609,11 +1648,6 @@ function renderCatalog() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                 <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </button>
-            <button class="icon-btn-tiny" data-action="rename" title="Rename">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
               </svg>
             </button>
             <button class="icon-btn-tiny danger" data-action="delete" title="Delete">
@@ -1711,12 +1745,12 @@ async function saveCatalogItem(idx) {
   const item = document.querySelector(`.catalog-item[data-idx="${idx}"]`);
   if (!item) return;
   const t = appConfig.trades[idx];
-  t.budgetRowDescription = item.querySelector('.catalog-budget').value || null;
+  t.budgetRowNo = item.querySelector('.catalog-budget').value || null;
   t.daysToRespond = parseInt(item.querySelector('.catalog-days-respond').value, 10) || CONFIG.defaultDaysToRespond;
   t.daysToFollowup = parseInt(item.querySelector('.catalog-days-followup').value, 10) || CONFIG.defaultDaysToFollowup;
   try {
     await saveAppConfig();
-    await logAudit('CATALOG_ITEM_UPDATED', t.category, { budgetRow: t.budgetRowDescription, days: `${t.daysToRespond}/${t.daysToFollowup}` });
+    await logAudit('CATALOG_ITEM_UPDATED', t.category, { budgetRowNo: t.budgetRowNo, days: `${t.daysToRespond}/${t.daysToFollowup}` });
     showToast(`${t.category} Saved`, 'success');
   } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
 }
@@ -1790,40 +1824,252 @@ async function deleteCatalogItem(idx) {
 }
 
 function addNewCatalogItem() {
+  // Get all existing No values for prediction
+  const allNos = [];
+  for (const t of appConfig.trades || []) {
+    for (const r of t.availableRows || []) {
+      if (r.no) allNos.push({ no: r.no, category: t.category });
+    }
+  }
+  // Distinct existing categories from import
+  const existingCats = (appConfig.trades || []).map(t => t.category);
+  const datalistOptions = existingCats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+
   showModal(`
-    <div class="modal-title">Add New Trade / Supplier</div>
-    <div class="modal-body">Use this if you have an item that's not in the budget Excel template.</div>
+    <div class="modal-title">Add New Item</div>
+    <div class="modal-body">Adds a row to the budget Excel template and creates a catalog entry. If the Category exists, the No. will continue its sequence; otherwise a new Category group is added at the bottom (above any Total row).</div>
     <div class="form-group">
-      <label class="form-label">Item Name</label>
-      <input id="new-cat-name" type="text" placeholder="e.g. Solar Hot Water" />
+      <label class="form-label">Category</label>
+      <input id="new-cat-input" type="text" list="cat-suggestions" placeholder="Type or pick existing" autocomplete="off" />
+      <datalist id="cat-suggestions">${datalistOptions}</datalist>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">No.</label>
+        <input id="new-no-input" type="text" placeholder="Auto-Predicted" />
+        <div class="form-hint">Auto-fills as you type Category</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select id="new-type-input">
+          <option value="Material">Material</option>
+          <option value="Labour">Labour</option>
+          <option value="MatLab">MatLab</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input id="new-desc-input" type="text" placeholder="e.g. PC Allowance for Pavers" />
+    </div>
+    <div class="form-error hidden" id="new-cat-err"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" id="new-cat-confirm">Add</button>
+      <button class="btn-primary" id="new-cat-confirm">Add To Excel</button>
     </div>`);
-  setTimeout(() => document.getElementById('new-cat-name').focus(), 50);
-  document.getElementById('new-cat-confirm').addEventListener('click', async () => {
-    const name = document.getElementById('new-cat-name').value.trim();
-    if (!name) { showToast('Name Required', 'error'); return; }
-    if (appConfig.trades.some(x => x.category.toLowerCase() === name.toLowerCase())) {
-      showToast('Already Exists', 'error'); return;
+
+  const catInput = document.getElementById('new-cat-input');
+  const noInput = document.getElementById('new-no-input');
+  setTimeout(() => catInput.focus(), 50);
+
+  // Predict No. as user types Category
+  function predictNo() {
+    const typedCat = catInput.value.trim();
+    if (!typedCat) { noInput.value = ''; return; }
+    // Find best match: exact case-insensitive first, then prefix match
+    const exact = existingCats.find(c => c.toLowerCase() === typedCat.toLowerCase());
+    const prefix = !exact ? existingCats.find(c => c.toLowerCase().startsWith(typedCat.toLowerCase())) : null;
+    const matchedCat = exact || prefix;
+    if (matchedCat) {
+      // Continue numbering within the matched category
+      const trade = appConfig.trades.find(t => t.category === matchedCat);
+      const nos = (trade.availableRows || []).map(r => r.no).filter(Boolean);
+      if (nos.length === 0) { noInput.value = ''; return; }
+      // Parse [major].[minor] and find max minor for the major
+      const parsed = nos.map(n => {
+        const m = String(n).match(/^(\d+)\.(\d+)$/);
+        return m ? { major: parseInt(m[1], 10), minor: parseInt(m[2], 10) } : null;
+      }).filter(Boolean);
+      if (parsed.length === 0) { noInput.value = ''; return; }
+      const major = parsed[0].major;
+      const maxMinor = Math.max(...parsed.filter(p => p.major === major).map(p => p.minor));
+      noInput.value = `${major}.${maxMinor + 1}`;
+    } else {
+      // New category — find next major after the highest in existing
+      let maxMajor = 0;
+      for (const item of allNos) {
+        const m = String(item.no).match(/^(\d+)\./);
+        if (m) maxMajor = Math.max(maxMajor, parseInt(m[1], 10));
+      }
+      noInput.value = `${maxMajor + 1}.1`;
     }
-    appConfig.trades.push({
-      category: name,
-      budgetRowDescription: null,
-      daysToRespond: CONFIG.defaultDaysToRespond,
-      daysToFollowup: CONFIG.defaultDaysToFollowup,
-      sowTemplate: null,
-      emailTemplate: null,
-      availableDescriptions: [],
-      custom: true
-    });
+  }
+  catInput.addEventListener('input', predictNo);
+  catInput.addEventListener('change', predictNo);
+
+  document.getElementById('new-cat-confirm').addEventListener('click', async () => {
+    const errEl = document.getElementById('new-cat-err');
+    errEl.classList.add('hidden');
+    const cat = catInput.value.trim();
+    const no = noInput.value.trim();
+    const desc = document.getElementById('new-desc-input').value.trim();
+    const type = document.getElementById('new-type-input').value;
+    if (!cat) { showFieldErr('Category Required'); return; }
+    if (!no || !/^\d+\.\d+$/.test(no)) { showFieldErr('No. Must Be Format X.Y (e.g. 37.6)'); return; }
+    if (!desc) { showFieldErr('Description Required'); return; }
+    // Check duplicate No.
+    for (const t of appConfig.trades) {
+      for (const r of t.availableRows || []) {
+        if (r.no === no) { showFieldErr(`No. ${no} Already Used Under "${t.category}"`); return; }
+      }
+    }
+    function showFieldErr(msg) {
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+    }
+    // Disable button + show progress
+    const btn = document.getElementById('new-cat-confirm');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-sm"></div> Writing To Excel...';
     try {
-      await saveAppConfig();
-      await logAudit('CATALOG_ITEM_ADDED', name, { custom: true });
-      closeModal(); renderCatalog();
+      await addRowToBudgetTemplate(cat, no, desc, type);
+      // Refresh from Excel so we pick up the new row
+      await importCatalogFromExcel(false);
+      await logAudit('CATALOG_ITEM_ADDED', cat, { no, description: desc, type });
+      closeModal();
+      // Auto-expand the relevant trade
+      expandedCatalogItems.add(cat);
+      renderCatalog();
       showToast('Item Added', 'success');
-    } catch (err) { console.error(err); showToast('Add Failed', 'error'); }
+    } catch (err) {
+      console.error('Add item error:', err);
+      btn.disabled = false;
+      btn.textContent = 'Add To Excel';
+      showFieldErr(`Failed: ${err.message}`);
+    }
+  });
+}
+
+// Insert a new row into the budget Excel template, preserving formulas/styling.
+// Inserts under the existing Category group if found, otherwise above the Total row at the bottom.
+async function addRowToBudgetTemplate(category, no, description, type) {
+  const siteId = await getAhSiteId();
+  const buf = await readXlsx(siteId, CONFIG.commonDocsPath, CONFIG.budgetTemplateName);
+  // Read with cellStyles to preserve formatting where possible
+  const wb = XLSX.read(buf, { type: 'array', cellStyles: true, cellFormula: true });
+  const sheetName = wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+
+  // Read all rows as 2D array (preserving original cell objects via sheet_to_json + manual reconstruction)
+  // We'll work directly with cell refs to preserve formulas.
+  // Find insertion target row index (1-based for Excel, but XLSX uses 0-based addresses)
+  let insertAtRow = -1; // XLSX 0-based row index where new row will live
+  // Scan rows to find category group
+  const catCol = 0; // A
+  let lastRowOfCategory = -1;
+  let totalRowIdx = -1;
+  for (let r = 1; r <= range.e.r; r++) {
+    const cellAddr = XLSX.utils.encode_cell({ c: catCol, r });
+    const cell = sheet[cellAddr];
+    const val = cell ? cell.v : null;
+    if (val && typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed.toLowerCase() === 'total') totalRowIdx = r;
+      if (trimmed === category) lastRowOfCategory = r;
+    }
+  }
+  if (lastRowOfCategory >= 0) {
+    insertAtRow = lastRowOfCategory + 1;
+  } else if (totalRowIdx >= 0) {
+    insertAtRow = totalRowIdx;
+  } else {
+    insertAtRow = range.e.r + 1;
+  }
+
+  // Shift all rows from insertAtRow downward by 1
+  // Iterate from bottom up, copying each cell to row+1
+  const newCells = {};
+  // First collect cells to copy
+  for (let r = range.e.r; r >= insertAtRow; r--) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const fromAddr = XLSX.utils.encode_cell({ c, r });
+      const cell = sheet[fromAddr];
+      if (!cell) continue;
+      const toAddr = XLSX.utils.encode_cell({ c, r: r + 1 });
+      // Deep clone cell, shift formulas downward by 1
+      const newCell = { ...cell };
+      if (newCell.f) {
+        newCell.f = shiftFormulaRow(newCell.f, 1);
+      }
+      newCells[toAddr] = newCell;
+      // Mark old position to be cleared (only if no replacement was already queued for fromAddr)
+      if (!newCells[fromAddr]) newCells[fromAddr] = null;
+    }
+  }
+  // Apply moves
+  for (const [addr, cell] of Object.entries(newCells)) {
+    if (cell === null) delete sheet[addr];
+    else sheet[addr] = cell;
+  }
+  // Now write the new row at insertAtRow
+  // Column A=Category, B=No, C=Description, D=Type
+  sheet[XLSX.utils.encode_cell({ c: 0, r: insertAtRow })] = { t: 's', v: category };
+  // Use numeric for No if it parses cleanly; otherwise string
+  const noParsed = parseFloat(no);
+  if (!isNaN(noParsed) && /^\d+\.\d+$/.test(no)) {
+    sheet[XLSX.utils.encode_cell({ c: 1, r: insertAtRow })] = { t: 'n', v: noParsed };
+  } else {
+    sheet[XLSX.utils.encode_cell({ c: 1, r: insertAtRow })] = { t: 's', v: no };
+  }
+  sheet[XLSX.utils.encode_cell({ c: 2, r: insertAtRow })] = { t: 's', v: description };
+  sheet[XLSX.utils.encode_cell({ c: 3, r: insertAtRow })] = { t: 's', v: type };
+
+  // Update sheet range
+  range.e.r += 1;
+  sheet['!ref'] = XLSX.utils.encode_range(range);
+
+  // Adjust merged ranges if any (shift down those at/below insertAtRow)
+  if (sheet['!merges']) {
+    sheet['!merges'] = sheet['!merges'].map(m => {
+      const newM = { s: { ...m.s }, e: { ...m.e } };
+      if (newM.s.r >= insertAtRow) newM.s.r += 1;
+      if (newM.e.r >= insertAtRow) newM.e.r += 1;
+      return newM;
+    });
+  }
+
+  // Write back
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+  const blob = new Uint8Array(out);
+  const token = await getToken();
+  const path = `${CONFIG.commonDocsPath}/${CONFIG.budgetTemplateName}`;
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeUriPath(path)}:/content`,
+    {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      },
+      body: blob
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Excel upload failed: ${res.status} ${text}`);
+  }
+}
+
+// Shift row references in a formula string by `delta` rows, but only for rows >= insertAtRow.
+// Simple regex-based: matches A1-style refs without absolute markers on row.
+// This is a best-effort approach; complex formulas with cross-sheet refs may not shift correctly.
+function shiftFormulaRow(formula, delta) {
+  // Match cell refs like A1, $A1, A$1, $A$1
+  return formula.replace(/(\$?)([A-Z]+)(\$?)(\d+)/g, (m, colAbs, col, rowAbs, row) => {
+    if (rowAbs === '$') return m; // absolute row, don't shift
+    const newRow = parseInt(row, 10) + delta;
+    return `${colAbs}${col}${rowAbs}${newRow}`;
   });
 }
 
