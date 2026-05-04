@@ -1,0 +1,149 @@
+// js/companies.js
+// Modal editor for adding / editing / deleting company contacts under
+// trade/supplier categories.
+
+import { state } from './state.js';
+import { saveSuppliers, logAudit } from './audit.js';
+import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
+import { renderCatalog } from './catalog.js';
+
+export function openCompanyEditor(idx, presetTrade) {
+  const isNew = idx === null;
+  const sup = isNew
+    ? { id: 'sup-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), companyName: '', contactName: '', email: '', phone: '', trades: presetTrade ? [presetTrade] : [], notes: '', active: true }
+    : { ...state.suppliersData.suppliers[idx] };
+  state.editingSupplier = { idx, supplier: sup };
+  state.supplierMultiSelectTrades = [...(sup.trades || [])];
+  showModal(`
+    <div class="modal-title">${isNew ? 'Add Company' : 'Edit Company'}</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Company Name</label>
+        <input id="sup-company" type="text" value="${escapeHtml(sup.companyName)}" placeholder="Bob's Concreting" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contact First Name</label>
+        <input id="sup-contact" type="text" value="${escapeHtml(sup.contactName)}" placeholder="Bob" />
+        <div class="form-hint">Used in greeting "Hi Bob,"</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input id="sup-email" type="email" value="${escapeHtml(sup.email)}" placeholder="bob@bobsconcreting.com.au" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone (Optional)</label>
+        <input id="sup-phone" type="text" value="${escapeHtml(sup.phone)}" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Trades / Suppliers Covered</label>
+      <div class="multi-chips" id="sup-trades-chips"></div>
+      <div class="form-hint">Click items below to toggle. A company can cover multiple items.</div>
+      <div class="mt-8" id="sup-trades-picker" style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto;padding:8px;background:var(--bg-3);border:1px solid var(--line);border-radius:8px;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (Optional)</label>
+      <textarea id="sup-notes" rows="3">${escapeHtml(sup.notes || '')}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label flex-row" style="gap:10px;cursor:pointer;" onclick="toggleSupActive()">
+        <span class="toggle${sup.active !== false ? ' on' : ''}" id="sup-active-toggle"></span>
+        <span>Active</span>
+      </label>
+      <div class="form-hint">Inactive companies won't appear in the RFQ recipient picker.</div>
+    </div>
+    <div class="modal-actions">
+      ${isNew ? '' : '<button class="btn-danger small" style="margin-right:auto;" onclick="deleteCompany()">Delete</button>'}
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveCompany()">Save</button>
+    </div>`);
+  renderCompanyTradesPicker();
+  renderCompanyTradeChips();
+}
+
+function renderCompanyTradesPicker() {
+  const picker = document.getElementById('sup-trades-picker');
+  const allCategories = (state.appConfig.trades || []).map(t => t.category).sort();
+  picker.innerHTML = allCategories.map(c => {
+    const selected = state.supplierMultiSelectTrades.includes(c);
+    return `<button type="button" class="${selected ? 'multi-chip' : 'btn-secondary small'}" data-cat="${escapeHtml(c)}" style="${selected ? '' : 'padding:4px 10px;font-size:12px;border-radius:14px;'}">${selected ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}${escapeHtml(c)}</button>`;
+  }).join('');
+  picker.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const c = btn.dataset.cat;
+      const i = state.supplierMultiSelectTrades.indexOf(c);
+      if (i >= 0) state.supplierMultiSelectTrades.splice(i, 1);
+      else state.supplierMultiSelectTrades.push(c);
+      renderCompanyTradesPicker(); renderCompanyTradeChips();
+    });
+  });
+}
+
+function renderCompanyTradeChips() {
+  const chipsEl = document.getElementById('sup-trades-chips');
+  if (!chipsEl) return;
+  if (state.supplierMultiSelectTrades.length === 0) {
+    chipsEl.innerHTML = '<span class="text-muted text-small">No items selected</span>';
+    return;
+  }
+  chipsEl.innerHTML = state.supplierMultiSelectTrades.map((t) => `
+    <span class="multi-chip">
+      ${escapeHtml(t)}
+      <span class="x" data-cat="${escapeHtml(t)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+    </span>`).join('');
+  chipsEl.querySelectorAll('.x').forEach(x => x.addEventListener('click', () => {
+    const c = x.dataset.cat;
+    const i = state.supplierMultiSelectTrades.indexOf(c);
+    if (i >= 0) state.supplierMultiSelectTrades.splice(i, 1);
+    renderCompanyTradesPicker(); renderCompanyTradeChips();
+  }));
+}
+
+function toggleSupActive() {
+  const tog = document.getElementById('sup-active-toggle');
+  tog.classList.toggle('on');
+}
+
+async function saveCompany() {
+  const sup = state.editingSupplier.supplier;
+  sup.companyName = document.getElementById('sup-company').value.trim();
+  sup.contactName = document.getElementById('sup-contact').value.trim();
+  sup.email = document.getElementById('sup-email').value.trim().toLowerCase();
+  sup.phone = document.getElementById('sup-phone').value.trim();
+  sup.notes = document.getElementById('sup-notes').value.trim();
+  sup.trades = [...state.supplierMultiSelectTrades];
+  sup.active = document.getElementById('sup-active-toggle').classList.contains('on');
+  if (!sup.companyName) { showToast('Company Name Required', 'error'); return; }
+  if (!sup.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sup.email)) { showToast('Valid Email Required', 'error'); return; }
+  if (sup.trades.length === 0) { showToast('At Least One Item Required', 'error'); return; }
+  if (state.editingSupplier.idx === null) state.suppliersData.suppliers.push(sup);
+  else state.suppliersData.suppliers[state.editingSupplier.idx] = sup;
+  try {
+    await saveSuppliers();
+    await logAudit(state.editingSupplier.idx === null ? 'COMPANY_ADDED' : 'COMPANY_UPDATED', sup.companyName, { email: sup.email, trades: sup.trades });
+    closeModal();
+    sup.trades.forEach(t => state.expandedCatalogItems.add(t));
+    renderCatalog();
+    showToast('Company Saved', 'success');
+  } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
+}
+
+async function deleteCompany() {
+  const proceed = await confirmModal('Delete Company?', `Delete <strong>${escapeHtml(state.editingSupplier.supplier.companyName)}</strong>? This cannot be undone.<br><br>Tip: marking as Inactive instead keeps history.`, 'Delete', 'Cancel');
+  if (!proceed) return;
+  const removed = state.suppliersData.suppliers.splice(state.editingSupplier.idx, 1)[0];
+  try {
+    await saveSuppliers();
+    await logAudit('COMPANY_DELETED', removed.companyName, { email: removed.email });
+    closeModal(); renderCatalog();
+    showToast('Company Deleted', 'success');
+  } catch (err) { console.error(err); showToast('Delete Failed', 'error'); }
+}
+
+// Inline-onclick exposure (modal HTML uses these handlers)
+window.toggleSupActive = toggleSupActive;
+window.saveCompany = saveCompany;
+window.deleteCompany = deleteCompany;
