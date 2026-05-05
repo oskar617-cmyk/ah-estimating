@@ -7,6 +7,7 @@ import { navigate } from './nav.js';
 import { loadAppConfig, saveAppConfig, logAudit } from './audit.js';
 import { showToast } from './ui.js';
 import { loadCatalogTab } from './catalog.js';
+import { loadEmailTemplatesTab } from './email-templates.js';
 
 export async function openSettings() {
   navigate('settings-screen', {});
@@ -23,6 +24,7 @@ export async function openSettings() {
       document.getElementById('settings-' + which).classList.add('active');
       if (which === 'signature') loadSignatureTab();
       if (which === 'catalog') loadCatalogTab();
+      if (which === 'email-templates') loadEmailTemplatesTab();
     };
   });
   await loadCatalogTab();

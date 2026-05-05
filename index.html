@@ -404,6 +404,117 @@
     .catalog-companies { padding: 0 12px 12px 12px; }
   }
 
+  /* ====== EMAIL TEMPLATES TAB ====== */
+  .tpl-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 240px;
+    gap: 12px;
+    align-items: start;
+  }
+  .tpl-sidebar, .tpl-placeholders {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 6px;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+  .tpl-sidebar-list { display: flex; flex-direction: column; gap: 2px; }
+  .tpl-sidebar-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+    gap: 8px;
+  }
+  .tpl-sidebar-item:hover { background: var(--bg-3); }
+  .tpl-sidebar-item.active { background: var(--bg-3); }
+  .tpl-sidebar-item.active .tpl-sidebar-label { color: var(--green); font-weight: 600; }
+  .tpl-sidebar-label {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tpl-sidebar-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .tpl-sidebar-tag-default { background: var(--purple-bg); color: var(--purple); }
+  .tpl-sidebar-tag-override { background: var(--green-bg); color: var(--green); }
+  .tpl-sidebar-tag-inherit { background: var(--bg-3); color: var(--text-3); }
+
+  .tpl-editor {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .tpl-editor-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  #tpl-body {
+    width: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 360px;
+  }
+
+  .tpl-placeholder-list { display: flex; flex-direction: column; gap: 2px; }
+  .tpl-placeholder-btn {
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid var(--line);
+    transition: border-color 0.15s, background 0.15s;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .tpl-placeholder-btn:hover { border-color: var(--green-dim); background: var(--bg-3); }
+  .tpl-placeholder-btn code {
+    color: var(--green); font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  .tpl-placeholder-label {
+    color: var(--text-3); font-size: 11px;
+  }
+
+  /* Email preview modal */
+  .email-preview {
+    background: #ffffff;
+    color: #1a1a1a;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .email-preview-headers {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .email-preview-row { margin-bottom: 4px; }
+  .email-preview-label { color: #777; display: inline-block; min-width: 60px; }
+  .email-preview-body {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .email-preview-body a { color: #0066cc; }
+
+  @media (max-width: 900px) {
+    .tpl-layout { grid-template-columns: 1fr; }
+    .tpl-sidebar, .tpl-placeholders { max-height: 200px; }
+  }
+
   .filter-bar {
     display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
   }
@@ -679,6 +790,7 @@
     <div class="content-wide">
       <div class="settings-tabs">
         <div class="settings-tab active" data-tab="catalog">Trades / Suppliers</div>
+        <div class="settings-tab" data-tab="email-templates">Email Templates</div>
         <div class="settings-tab" data-tab="signature">Email Signature</div>
         <div class="settings-tab" data-tab="users">Users</div>
       </div>
@@ -715,6 +827,9 @@
           <div class="loading"><div class="spinner"></div><div>Loading...</div></div>
         </div>
       </div>
+
+      <!-- Email Templates section: rendered entirely by email-templates.js -->
+      <div class="settings-section" id="settings-email-templates"></div>
 
       <!-- Signature section -->
       <div class="settings-section" id="settings-signature">

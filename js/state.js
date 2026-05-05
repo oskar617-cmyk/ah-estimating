@@ -17,5 +17,6 @@ export const state = {
   suppliersData: null,    // suppliers.json contents
   editingSupplier: null,
   supplierMultiSelectTrades: [],
-  expandedCatalogItems: new Set()
+  expandedCatalogItems: new Set(),
+  activeTemplateCategory: null   // Email Templates tab: '__default__' or a category name
 };
