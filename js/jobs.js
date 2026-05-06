@@ -165,9 +165,20 @@ export async function migrateExistingQuotes() {
 function renderJobDetail(tracker) {
   const container = document.getElementById('jd-content');
   const teamDisplay = formatTeamEmails(tracker.projectTeamEmails);
-  const rfqCount = (tracker.rfqs || []).length;
+  const rfqs = Array.isArray(tracker.rfqs) ? tracker.rfqs : [];
   const migratedCount = (tracker.migratedQuotes || []).length;
   const needsReviewCount = (tracker.needsReview || []).length;
+
+  // Group RFQs by trade category. Same trade may have multiple RFQ batches
+  // (e.g. re-sent later). We display each batch under its trade group.
+  const groups = new Map();
+  for (const r of rfqs) {
+    if (!groups.has(r.category)) groups.set(r.category, []);
+    groups.get(r.category).push(r);
+  }
+
+  const senderAllowed = state.currentUserEmail === 'est@auhs.com.au';
+
   let migratedSection = '';
   if (migratedCount > 0 || needsReviewCount > 0) {
     const items = [];
@@ -175,6 +186,43 @@ function renderJobDetail(tracker) {
     if (needsReviewCount > 0) items.push(`<div class="text-small mt-4" style="color: var(--amber);">${needsReviewCount} File${needsReviewCount === 1 ? ' Needs' : 's Need'} Manual Review</div>`);
     migratedSection = `<div class="section-title">Migrated From Existing Files</div><div class="info-card">${items.join('')}</div>`;
   }
+
+  let rfqsHtml;
+  if (rfqs.length === 0) {
+    rfqsHtml = '<div class="info-card"><div class="text-muted text-small">No RFQs Sent Yet</div></div>';
+  } else {
+    const groupKeys = Array.from(groups.keys()).sort();
+    rfqsHtml = groupKeys.map(category => {
+      const batches = groups.get(category);
+      // Aggregate status across all batches under this trade
+      const status = aggregateTradeStatus(batches);
+      const badge = renderStatusBadge(status);
+      const batchHtml = batches
+        .slice()
+        .sort((a, b) => (b.sentAt || '').localeCompare(a.sentAt || ''))
+        .map(b => renderRfqBatchActivity(b))
+        .join('');
+      return `
+        <div class="rfq-group">
+          <div class="rfq-group-header">
+            <div class="rfq-group-title">${escapeHtml(category)}</div>
+            ${badge}
+          </div>
+          <div class="rfq-group-body">${batchHtml}</div>
+        </div>`;
+    }).join('');
+  }
+
+  const sendBtn = senderAllowed
+    ? `<button class="btn-primary mt-16" onclick="openSendRfq()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send New RFQ
+      </button>`
+    : `<button class="btn-primary mt-16" disabled title="Only est@auhs.com.au can send RFQs">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send New RFQ (Est Only)
+      </button>`;
+
   container.innerHTML = `
     <div class="job-header">
       <div class="job-header-code">${escapeHtml(state.currentJob.jobCode)} ${escapeHtml(state.currentJob.jobName)}</div>
@@ -183,20 +231,137 @@ function renderJobDetail(tracker) {
         <div><strong>Project Team:</strong> ${escapeHtml(teamDisplay)}</div>
       </div>
     </div>
-    <div class="section-title">RFQs <span class="text-muted text-small" style="font-weight: normal; text-transform: none; letter-spacing: 0;">(${rfqCount} Total)</span></div>
-    <div class="info-card">
-      ${rfqCount === 0 ? '<div class="text-muted text-small">No RFQs Sent Yet</div>' : '<div class="text-muted text-small">RFQ List Display Coming In Next Phase</div>'}
-      <button class="btn-primary mt-16" disabled title="Coming In Next Phase">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Send New RFQ
-      </button>
-    </div>
+    <div class="section-title">RFQs <span class="text-muted text-small" style="font-weight: normal; text-transform: none; letter-spacing: 0;">(${rfqs.length} Total)</span></div>
+    ${rfqsHtml}
+    ${sendBtn}
     ${migratedSection}
     <div class="section-title">Folder</div>
     <div class="info-card">
       <a href="${escapeHtml(state.currentJob.webUrl)}" target="_blank" style="color: var(--blue); text-decoration: none; font-size: 14px;">Open ${escapeHtml(state.currentJob.folderName)} In SharePoint</a>
     </div>
   `;
+}
+
+// Aggregate the highest-priority status across all batches under one trade.
+// Priority (high to low): picked > suspicious > question > quoted > replied > sent > given_up > none.
+function aggregateTradeStatus(batches) {
+  let totalSuppliers = 0, replied = 0, quoted = 0;
+  let hasPicked = false, hasSuspicious = false, hasQuestion = false;
+  let allGivenUp = batches.length > 0;
+  for (const b of batches) {
+    if (b.status === 'picked') hasPicked = true;
+    if (b.status !== 'given_up') allGivenUp = false;
+    for (const s of b.suppliers || []) {
+      totalSuppliers++;
+      const replies = s.replies || [];
+      if (replies.length > 0) replied++;
+      // Quote priority: any reply classified 'quote' counts
+      if (replies.some(r => r.classification === 'quote')) quoted++;
+      if (replies.some(r => r.classification === 'suspicious')) hasSuspicious = true;
+      if (replies.some(r => r.classification === 'question')) hasQuestion = true;
+    }
+  }
+  if (hasPicked) return { kind: 'picked' };
+  if (hasSuspicious) return { kind: 'suspicious' };
+  if (hasQuestion && quoted === 0) return { kind: 'question' };
+  if (quoted > 0) return { kind: 'quoted', n: quoted };
+  if (replied > 0) return { kind: 'replied', n: replied, m: totalSuppliers };
+  if (allGivenUp) return { kind: 'given-up' };
+  if (totalSuppliers > 0) return { kind: 'sent', n: totalSuppliers };
+  return { kind: 'not-sent' };
+}
+
+function renderStatusBadge(status) {
+  switch (status.kind) {
+    case 'not-sent':   return '<span class="badge badge-not-sent">⚪ Not Sent</span>';
+    case 'sent':       return `<span class="badge badge-sent">🟡 ${status.n} Sent</span>`;
+    case 'replied':    return `<span class="badge badge-replied">🔵 ${status.n}/${status.m} Replied</span>`;
+    case 'quoted':     return `<span class="badge badge-quoted">🟢 ${status.n} Quoted</span>`;
+    case 'question':   return '<span class="badge badge-question">❓ Question</span>';
+    case 'suspicious': return '<span class="badge badge-suspicious">⚠ Suspicious</span>';
+    case 'picked':     return '<span class="badge badge-selected">✅ Trade Selected</span>';
+    case 'given-up':   return '<span class="badge badge-given-up">⚫ Given Up</span>';
+    default:           return '';
+  }
+}
+
+// Render one RFQ batch as a plain-language activity entry.
+function renderRfqBatchActivity(batch) {
+  const senderLocal = (batch.sentBy || '').split('@')[0] || '?';
+  const sentDate = formatDateTimeShort(batch.sentAt);
+  const supplierNames = (batch.suppliers || []).map(s => escapeHtml(s.companyName)).join(', ');
+  const supplierCount = (batch.suppliers || []).length;
+  const lines = [];
+  lines.push(`
+    <div class="activity-item">
+      <div class="activity-icon">✉</div>
+      <div class="activity-text">
+        <div><strong>${escapeHtml(senderLocal)}</strong> sent RFQ to <strong>${supplierNames}</strong></div>
+        <div class="activity-meta">${escapeHtml(sentDate)} · Reply by ${escapeHtml(batch.respondByDate || '?')}${batch.budgetRowNo ? ' · Maps to row ' + escapeHtml(batch.budgetRowNo) : ''}${batch.sowAttached ? '' : ' · <span style="color:var(--amber);">No SOW attached</span>'}</div>
+      </div>
+    </div>
+  `);
+  // Each supplier's replies (none yet for v1; placeholder for Phase 4d inbox)
+  for (const s of batch.suppliers || []) {
+    const replies = s.replies || [];
+    for (const r of replies) {
+      lines.push(renderReplyActivity(s, r));
+    }
+    if (s.followupCount > 0) {
+      lines.push(`
+        <div class="activity-item activity-system">
+          <div class="activity-icon">↩</div>
+          <div class="activity-text">
+            <div>Sent ${s.followupCount} follow-up${s.followupCount === 1 ? '' : 's'} to ${escapeHtml(s.companyName)}</div>
+            <div class="activity-meta">Latest: ${escapeHtml(formatDateTimeShort(s.lastFollowupAt))}</div>
+          </div>
+        </div>
+      `);
+    }
+  }
+  return `<div class="rfq-batch">${lines.join('')}</div>`;
+}
+
+function renderReplyActivity(supplier, reply) {
+  const icon = reply.classification === 'quote' ? '📥'
+    : reply.classification === 'question' ? '❓'
+    : reply.classification === 'suspicious' ? '⚠'
+    : reply.classification === 'decline' ? '❌'
+    : '↻';
+  let line;
+  if (reply.classification === 'quote') {
+    const amount = reply.amount != null ? `$${reply.amount.toLocaleString()}` : '(amount tbc)';
+    line = `<strong>${escapeHtml(supplier.companyName)}</strong> replied with quote ${escapeHtml(amount)}`;
+  } else if (reply.classification === 'question') {
+    line = `<strong>${escapeHtml(supplier.companyName)}</strong> asked: "${escapeHtml(reply.summary || '')}"`;
+  } else if (reply.classification === 'suspicious') {
+    line = `<strong>${escapeHtml(supplier.companyName)}</strong> reply flagged suspicious`;
+  } else if (reply.classification === 'decline') {
+    line = `<strong>${escapeHtml(supplier.companyName)}</strong> declined to quote`;
+  } else {
+    line = `<strong>${escapeHtml(supplier.companyName)}</strong> replied`;
+  }
+  return `
+    <div class="activity-item">
+      <div class="activity-icon">${icon}</div>
+      <div class="activity-text">
+        <div>${line}</div>
+        <div class="activity-meta">${escapeHtml(formatDateTimeShort(reply.receivedAt))}</div>
+      </div>
+    </div>`;
+}
+
+function formatDateTimeShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12; if (h === 0) h = 12;
+  return `${dayNames[d.getDay()]} ${d.getDate()} ${monthNames[d.getMonth()]}, ${h}:${m}${ampm}`;
 }
 
 // Wire up the "refresh on return" callback once at boot

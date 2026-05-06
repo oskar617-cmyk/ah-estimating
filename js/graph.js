@@ -124,3 +124,109 @@ export async function readXlsx(siteId, parentPath, filename) {
   if (!res.ok) throw new Error(`Read XLSX failed: ${res.status}`);
   return res.arrayBuffer();
 }
+
+// List files (excluding folders) inside a folder path. Returns array of
+// { name, lastModifiedDateTime, size, webUrl } sorted by name.
+export async function listFiles(siteId, folderPath) {
+  const result = await graphFetch(
+    `/sites/${siteId}/drive/root:/${encodeUriPath(folderPath)}:/children?$top=500&$select=id,name,file,folder,webUrl,size,lastModifiedDateTime`
+  );
+  return (result.value || [])
+    .filter(it => it.file)
+    .map(it => ({
+      name: it.name,
+      lastModifiedDateTime: it.lastModifiedDateTime,
+      size: it.size,
+      webUrl: it.webUrl
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Read a file's binary content as ArrayBuffer (used for SOW attachments).
+export async function readBinary(siteId, parentPath, filename) {
+  const path = parentPath ? `${parentPath}/${filename}` : filename;
+  const token = await getToken();
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeUriPath(path)}:/content`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+  if (res.status === 404) {
+    const err = new Error('File not found');
+    err.status = 404;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`Read binary failed: ${res.status}`);
+  return res.arrayBuffer();
+}
+
+// Check whether a file exists at a given path. Returns true / false.
+export async function fileExists(siteId, parentPath, filename) {
+  const path = parentPath ? `${parentPath}/${filename}` : filename;
+  try {
+    await graphFetch(`/sites/${siteId}/drive/root:/${encodeUriPath(path)}`);
+    return true;
+  } catch (err) {
+    if (err.status === 404) return false;
+    throw err;
+  }
+}
+
+// Create or fetch an "anyone with link can view" share link for a folder.
+// Returns the shareable URL.
+export async function createAnonymousReadLink(siteId, folderPath) {
+  const folderItem = await graphFetch(
+    `/sites/${siteId}/drive/root:/${encodeUriPath(folderPath)}`
+  );
+  const body = JSON.stringify({ type: 'view', scope: 'anonymous' });
+  const result = await graphFetch(
+    `/sites/${siteId}/drive/items/${folderItem.id}/createLink`,
+    { method: 'POST', body }
+  );
+  return result.link.webUrl;
+}
+
+// Convert ArrayBuffer to base64 string for Graph attachment payload.
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  // Process in chunks to avoid call stack overflow on large files
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Send an email via Microsoft Graph as the signed-in user.
+// `payload` shape:
+//   {
+//     subject, htmlBody, toRecipients[], ccRecipients[], replyToRecipients[],
+//     attachments: [{ name, contentBytes (base64), contentType }]
+//   }
+// Returns the sent message's internetMessageId by re-fetching from Sent Items.
+export async function sendMail(payload) {
+  const message = {
+    subject: payload.subject,
+    body: { contentType: 'HTML', content: payload.htmlBody },
+    toRecipients: (payload.toRecipients || []).map(e => ({ emailAddress: { address: e } })),
+    ccRecipients: (payload.ccRecipients || []).map(e => ({ emailAddress: { address: e } })),
+    replyTo: (payload.replyToRecipients || []).map(e => ({ emailAddress: { address: e } })),
+    attachments: (payload.attachments || []).map(a => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: a.name,
+      contentType: a.contentType || 'application/octet-stream',
+      contentBytes: a.contentBytes
+    }))
+  };
+  await graphFetch('/me/sendMail', {
+    method: 'POST',
+    body: JSON.stringify({ message, saveToSentItems: true })
+  });
+  // /sendMail returns 202 with no body; we don't get the id back. The Power
+  // Automate flow that watches replies will use the In-Reply-To header to
+  // match — we store our own generated id for tracker linking.
+  return true;
+}
+
+// Helper exported for callers that need to base64-encode binary attachments.
+export { arrayBufferToBase64 };

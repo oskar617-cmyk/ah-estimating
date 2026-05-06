@@ -15,6 +15,7 @@ import './settings.js';
 import './catalog.js';
 import './companies.js';
 import './email-templates.js';
+import './send-rfq.js';
 
 // Wire up the post-sign-in callback (auth doesn't import jobs directly to
 // keep auth as a leaf module).

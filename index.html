@@ -404,6 +404,108 @@
     .catalog-companies { padding: 0 12px 12px 12px; }
   }
 
+  /* ====== STATUS BADGES ====== */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px; font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-not-sent   { background: var(--bg-3); color: var(--text-2); }
+  .badge-sent       { background: var(--amber-bg); color: var(--amber); }
+  .badge-replied    { background: var(--blue-bg); color: var(--blue); }
+  .badge-quoted     { background: var(--green-bg); color: var(--green); }
+  .badge-question   { background: var(--purple-bg); color: var(--purple); }
+  .badge-suspicious { background: var(--red-bg); color: var(--red); }
+  .badge-selected   { background: var(--green); color: var(--bg); font-weight: 600; }
+  .badge-given-up   { background: var(--bg-3); color: var(--text-3); text-decoration: line-through; }
+
+  /* ====== SEND RFQ WIZARD ====== */
+  .rfq-pick-list { display: flex; flex-direction: column; gap: 6px; }
+  .rfq-pick-row {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .rfq-pick-row:hover { border-color: var(--green-dim); }
+  .rfq-pick-row:active { transform: scale(0.99); }
+  .rfq-pick-main { flex: 1; min-width: 0; }
+  .rfq-pick-name { font-weight: 500; font-size: 15px; }
+  .rfq-pick-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .rfq-pick-arrow { color: var(--text-3); font-size: 20px; flex-shrink: 0; }
+
+  .rfq-supplier-grid {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .rfq-supplier-row {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .rfq-supplier-row:hover { border-color: var(--green-dim); }
+  .rfq-supplier-row input[type="checkbox"] {
+    width: 18px; height: 18px;
+    accent-color: var(--green);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .rfq-supplier-info { flex: 1; min-width: 0; }
+  .rfq-supplier-name { font-weight: 500; font-size: 14px; }
+  .rfq-supplier-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ====== JOB DETAIL: RFQ ACTIVITY FEED ====== */
+  .rfq-group {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .rfq-group-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--line);
+    gap: 12px;
+  }
+  .rfq-group-title {
+    font-weight: 600; font-size: 15px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rfq-group-body {
+    padding: 4px 0;
+  }
+  .rfq-batch + .rfq-batch {
+    border-top: 1px dashed var(--line);
+    margin-top: 4px;
+    padding-top: 8px;
+  }
+  .activity-item {
+    display: flex; gap: 12px;
+    padding: 10px 16px;
+    align-items: flex-start;
+  }
+  .activity-icon {
+    width: 22px; flex-shrink: 0;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .activity-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
+  .activity-meta {
+    font-size: 12px; color: var(--text-3); margin-top: 2px;
+  }
+  .activity-system { opacity: 0.8; }
+
   /* ====== EMAIL TEMPLATES TAB ====== */
   .tpl-layout {
     display: grid;
@@ -772,6 +874,23 @@
       <div id="jd-content">
         <div class="loading"><div class="spinner"></div><div>Loading Job...</div></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- SEND RFQ -->
+<div id="send-rfq-screen" class="screen">
+  <div class="top-bar">
+    <button class="back-btn" onclick="goBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+      </svg>
+    </button>
+    <div class="top-title green" id="rfq-title">Send RFQ</div>
+  </div>
+  <div class="content">
+    <div class="content-narrow">
+      <div id="rfq-content"></div>
     </div>
   </div>
 </div>
