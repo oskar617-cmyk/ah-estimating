@@ -201,10 +201,19 @@ function arrayBufferToBase64(buf) {
 // `payload` shape:
 //   {
 //     subject, htmlBody, toRecipients[], ccRecipients[], replyToRecipients[],
-//     attachments: [{ name, contentBytes (base64), contentType }]
+//     attachments: [{ name, contentBytes (base64), contentType }],
+//     customHeaders: { 'x-foo': 'bar' }   // optional
 //   }
-// Returns the sent message's internetMessageId by re-fetching from Sent Items.
+// Returns true on success. /me/sendMail returns 202 with no body so we can't
+// get the message id back from the call itself.
 export async function sendMail(payload) {
+  const headers = [];
+  if (payload.customHeaders) {
+    for (const [name, value] of Object.entries(payload.customHeaders)) {
+      // Graph requires custom headers to start with 'x-' (case-insensitive)
+      if (/^x-/i.test(name)) headers.push({ name, value: String(value) });
+    }
+  }
   const message = {
     subject: payload.subject,
     body: { contentType: 'HTML', content: payload.htmlBody },
@@ -218,14 +227,29 @@ export async function sendMail(payload) {
       contentBytes: a.contentBytes
     }))
   };
+  if (headers.length > 0) message.internetMessageHeaders = headers;
   await graphFetch('/me/sendMail', {
     method: 'POST',
     body: JSON.stringify({ message, saveToSentItems: true })
   });
-  // /sendMail returns 202 with no body; we don't get the id back. The Power
-  // Automate flow that watches replies will use the In-Reply-To header to
-  // match — we store our own generated id for tracker linking.
   return true;
+}
+
+// Lightweight helper: list filenames (no metadata) under a folder path.
+// Used by Settings to check which categories already have a SOW template.
+export async function listFilenames(siteId, folderPath) {
+  try {
+    const result = await graphFetch(
+      `/sites/${siteId}/drive/root:/${encodeUriPath(folderPath)}:/children?$top=500&$select=name,file`
+    );
+    return (result.value || [])
+      .filter(it => it.file)
+      .map(it => it.name);
+  } catch (err) {
+    // If the folder doesn't exist, treat as empty list rather than failing
+    if (err.status === 404) return [];
+    throw err;
+  }
 }
 
 // Helper exported for callers that need to base64-encode binary attachments.

@@ -78,7 +78,16 @@ export function getSubjectTemplate() {
 }
 
 // Render a template string by substituting {placeholders} from a values object.
-// Linebreaks → <br>. Used both by the live preview and by the Send flow later.
+// IMPORTANT: this version expects HTML-safe values where appropriate. The
+// caller (send-rfq for real emails, preview for samples) is responsible for
+// escaping plain-text values like firstName before passing them in.
+//
+// Two-pass approach to keep injected HTML pristine:
+//   1. Convert template's plain-text linebreaks to <br> first
+//   2. Substitute placeholders (including HTML-bearing ones like
+//      {filesList} and {tradiesLink}) into the now-HTML template
+// This way HTML inside placeholder values isn't broken up by an over-eager
+// \n → <br> pass.
 export function renderTemplate(templateStr, values) {
   if (!templateStr) return '';
   let out = templateStr;
@@ -86,15 +95,15 @@ export function renderTemplate(templateStr, values) {
     const re = new RegExp('\\{' + key + '\\}', 'g');
     out = out.replace(re, values[key] != null ? String(values[key]) : '');
   }
-  // Convert plain-text linebreaks to HTML <br> for email rendering, but only
-  // for body templates (subject lines are single-line and pass through).
   return out;
 }
 
-export function templateToHtml(rendered) {
-  // Preserve any HTML the placeholders inject (links, tables) and convert
-  // user-typed linebreaks to <br>.
-  return rendered.replace(/\n/g, '<br>');
+// Convert plain-text linebreaks in the template to <br> BEFORE the caller
+// substitutes HTML-bearing placeholders. Use this on the raw template string,
+// then call renderTemplate() on the result with HTML-formatted values.
+export function templateToHtml(templateStr) {
+  if (!templateStr) return '';
+  return templateStr.replace(/\n/g, '<br>');
 }
 
 // ----- Tab loader -----
@@ -319,8 +328,10 @@ function openPreview(category) {
   if (!isDefault) sample.tradeName = category;
 
   const renderedSubject = renderTemplate(subjectTemplate, sample);
-  const renderedBodyText = renderTemplate(body, sample);
-  const renderedBodyHtml = templateToHtml(renderedBodyText);
+  // New order: convert linebreaks first, THEN substitute. Sample values
+  // (including filesList table HTML) are injected into already-HTML template.
+  const bodyAsHtml = templateToHtml(body);
+  const renderedBodyHtml = renderTemplate(bodyAsHtml, sample);
 
   showModal(`
     <div class="modal-title">Preview${isDefault ? '' : ' — ' + escapeHtml(category)}</div>

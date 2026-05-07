@@ -18,5 +18,6 @@ export const state = {
   editingSupplier: null,
   supplierMultiSelectTrades: [],
   expandedCatalogItems: new Set(),
-  activeTemplateCategory: null   // Email Templates tab: '__default__' or a category name
+  activeTemplateCategory: null,   // Email Templates tab: '__default__' or a category name
+  sowFilenames: null              // Cached array of files in SOW Templates folder (loaded once per Settings open)
 };

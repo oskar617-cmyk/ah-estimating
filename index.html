@@ -268,7 +268,7 @@
   /* ====== CATALOG (combined trades/suppliers) ====== */
   .catalog-header {
     display: grid;
-    grid-template-columns: 1fr 1.6fr 80px 80px 120px;
+    grid-template-columns: 1fr 1.6fr 110px 110px 120px;
     gap: 12px;
     padding: 8px 12px;
     background: var(--bg-3);
@@ -295,7 +295,7 @@
   }
   .catalog-row {
     display: grid;
-    grid-template-columns: 1fr 1.6fr 80px 80px 120px;
+    grid-template-columns: 1fr 1.6fr 110px 110px 120px;
     gap: 12px;
     padding: 10px 12px;
     align-items: center;
@@ -335,6 +335,17 @@
   .catalog-rename-inline svg { width: 11px; height: 11px; }
   .catalog-name-cell:hover .catalog-rename-inline { opacity: 0.6; }
   .catalog-rename-inline:hover { opacity: 1 !important; }
+
+  .sow-indicator {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+  }
+  .sow-yes { background: var(--green-bg); color: var(--green); }
+  .sow-no  { background: var(--amber-bg); color: var(--amber); }
   .catalog-row select, .catalog-row input {
     padding: 6px 10px; font-size: 13px;
   }
@@ -422,6 +433,50 @@
   .badge-given-up   { background: var(--bg-3); color: var(--text-3); text-decoration: line-through; }
 
   /* ====== SEND RFQ WIZARD ====== */
+  /* Step 1 trade picker — tile grid: 3 cols on mobile, more on desktop */
+  .rfq-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  @media (min-width: 720px) { .rfq-tile-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 1024px) { .rfq-tile-grid { grid-template-columns: repeat(5, 1fr); } }
+  @media (min-width: 1280px) { .rfq-tile-grid { grid-template-columns: repeat(6, 1fr); } }
+  .rfq-tile {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s, background 0.15s;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 92px;
+    color: var(--text);
+  }
+  .rfq-tile:hover { border-color: var(--green); background: var(--bg-3); }
+  .rfq-tile:active { transform: scale(0.97); }
+  .rfq-tile-name {
+    font-weight: 600; font-size: 13px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .rfq-tile-meta {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    justify-content: center;
+    margin-top: auto;
+  }
+  .rfq-tile-dot {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+  .rfq-tile-dot.ok { background: var(--green-bg); color: var(--green); }
+  .rfq-tile-dot.warn { background: var(--bg-3); color: var(--text-3); }
+
   .rfq-pick-list { display: flex; flex-direction: column; gap: 6px; }
   .rfq-pick-row {
     background: var(--bg-2);

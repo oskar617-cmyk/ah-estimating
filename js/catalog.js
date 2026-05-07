@@ -5,7 +5,7 @@
 
 import { CONFIG } from './config.js';
 import { state } from './state.js';
-import { getAhSiteId, encodeUriPath, readXlsx } from './graph.js';
+import { getAhSiteId, encodeUriPath, readXlsx, listFilenames } from './graph.js';
 import { getToken } from './auth.js';
 import { loadAppConfig, saveAppConfig, loadSuppliers, saveSuppliers, logAudit } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
@@ -23,6 +23,17 @@ export async function loadCatalogTab() {
     if (needsImport) {
       container.innerHTML = '<div class="loading"><div class="spinner"></div><div>Importing From Budget Template...</div></div>';
       await importCatalogFromExcel(false);
+    }
+    // Load SOW filenames once per Settings open (cached on state.sowFilenames).
+    // Failure here is non-fatal — the indicator just shows "unknown".
+    if (state.sowFilenames === null) {
+      try {
+        const siteId = await getAhSiteId();
+        state.sowFilenames = await listFilenames(siteId, `${CONFIG.commonDocsPath}/SOW Templates`);
+      } catch (err) {
+        console.warn('SOW Templates folder list failed:', err);
+        state.sowFilenames = [];
+      }
     }
     document.getElementById('catalog-search').oninput = renderCatalog;
     renderCatalog();
@@ -137,8 +148,8 @@ export function renderCatalog() {
     <div class="catalog-header">
       <div class="col-category">Category</div>
       <div>Budget Row</div>
-      <div class="col-days">Respond Days</div>
-      <div class="col-days">Follow-Up Days</div>
+      <div class="col-days">Respond</div>
+      <div class="col-days">Follow-Up</div>
       <div class="col-actions">Actions</div>
     </div>`;
 
@@ -151,6 +162,11 @@ export function renderCatalog() {
       const label = r.no ? `${r.no} — ${r.description || ''}` : (r.description || '');
       return `<option value="${escapeHtml(r.no || '')}"${t.budgetRowNo === r.no ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
+    const sowFile = `${t.category}.docx`;
+    const sowExists = (state.sowFilenames || []).includes(sowFile);
+    const sowBadge = sowExists
+      ? `<span class="sow-indicator sow-yes" title="${escapeHtml(sowFile)} found in SOW Templates">SOW</span>`
+      : `<span class="sow-indicator sow-no" title="${escapeHtml(sowFile)} not found in SOW Templates folder. Upload it before sending RFQs for this category.">No SOW</span>`;
     return `
       <div class="catalog-item${expandedClass}" data-idx="${realIdx}">
         <div class="catalog-row">
@@ -161,6 +177,7 @@ export function renderCatalog() {
               </svg>
             </div>
             <div class="catalog-name">${escapeHtml(t.category)}</div>
+            ${sowBadge}
             <button class="icon-btn-tiny catalog-rename-inline" data-action="rename" title="Rename Category">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>

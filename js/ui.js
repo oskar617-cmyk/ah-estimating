@@ -44,9 +44,9 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-// Wire up the modal backdrop click-to-dismiss (called once at boot)
+// Backdrop click is intentionally NOT wired to dismiss the modal — users
+// kept losing form input by mis-tapping outside. Only explicit Cancel/X
+// buttons (which call closeModal()) close the modal now.
 export function initModalBackdrop() {
-  document.getElementById('modal-backdrop').addEventListener('click', (e) => {
-    if (e.target.id === 'modal-backdrop') closeModal();
-  });
+  // Kept as a no-op for compatibility with app.js boot sequence.
 }

@@ -7,12 +7,12 @@ import { saveSuppliers, logAudit } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 import { renderCatalog } from './catalog.js';
 
-export function openCompanyEditor(idx, presetTrade) {
+export function openCompanyEditor(idx, presetTrade, onSaved) {
   const isNew = idx === null;
   const sup = isNew
     ? { id: 'sup-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), companyName: '', contactName: '', email: '', phone: '', trades: presetTrade ? [presetTrade] : [], notes: '', active: true }
     : { ...state.suppliersData.suppliers[idx] };
-  state.editingSupplier = { idx, supplier: sup };
+  state.editingSupplier = { idx, supplier: sup, onSaved: onSaved || null };
   state.supplierMultiSelectTrades = [...(sup.trades || [])];
   showModal(`
     <div class="modal-title">${isNew ? 'Add Company' : 'Edit Company'}</div>
@@ -124,9 +124,16 @@ async function saveCompany() {
   try {
     await saveSuppliers();
     await logAudit(state.editingSupplier.idx === null ? 'COMPANY_ADDED' : 'COMPANY_UPDATED', sup.companyName, { email: sup.email, trades: sup.trades });
+    const cb = state.editingSupplier.onSaved;
     closeModal();
-    sup.trades.forEach(t => state.expandedCatalogItems.add(t));
-    renderCatalog();
+    if (cb) {
+      // Caller (e.g. send-rfq wizard) handles its own re-render
+      cb(sup);
+    } else {
+      // Default: refresh the Settings catalog view
+      sup.trades.forEach(t => state.expandedCatalogItems.add(t));
+      renderCatalog();
+    }
     showToast('Company Saved', 'success');
   } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
 }
@@ -138,7 +145,9 @@ async function deleteCompany() {
   try {
     await saveSuppliers();
     await logAudit('COMPANY_DELETED', removed.companyName, { email: removed.email });
-    closeModal(); renderCatalog();
+    const cb = state.editingSupplier.onSaved;
+    closeModal();
+    if (cb) cb(null); else renderCatalog();
     showToast('Company Deleted', 'success');
   } catch (err) { console.error(err); showToast('Delete Failed', 'error'); }
 }

@@ -16,6 +16,7 @@ import {
 import { loadAppConfig, loadSuppliers, logAudit } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 import { getTemplateForCategory, getSubjectTemplate, renderTemplate, templateToHtml } from './email-templates.js';
+import { openCompanyEditor } from './companies.js';
 
 // In-memory wizard state. Reset each time the wizard opens.
 const wizard = {
@@ -64,37 +65,40 @@ function renderWizard() {
 // --------- Step 1: Pick a trade ---------
 function renderStep1Trade(root) {
   const trades = (state.appConfig.trades || []).slice().sort((a, b) => a.category.localeCompare(b.category));
-  // Search box + clickable list of trades
   root.innerHTML = `
     <div class="filter-bar">
       <input id="rfq-trade-search" type="text" placeholder="Search trades..." />
     </div>
-    <div id="rfq-trade-list" class="rfq-pick-list"></div>
+    <div id="rfq-trade-grid" class="rfq-tile-grid"></div>
     <div class="btn-row mt-16">
       <button class="btn-secondary" onclick="goBack()">Cancel</button>
     </div>
   `;
-  const listEl = document.getElementById('rfq-trade-list');
-  function renderList(filter) {
+  const gridEl = document.getElementById('rfq-trade-grid');
+  function renderGrid(filter) {
     const f = (filter || '').toLowerCase().trim();
     const items = trades.filter(t => !f || t.category.toLowerCase().includes(f));
     if (items.length === 0) {
-      listEl.innerHTML = '<div class="empty-state"><div>No Matches</div></div>';
+      gridEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>No Matches</div></div>';
       return;
     }
-    listEl.innerHTML = items.map(t => {
+    gridEl.innerHTML = items.map(t => {
       const supplierCount = (state.suppliersData.suppliers || []).filter(s => (s.trades || []).includes(t.category) && s.active !== false).length;
-      const budgetLabel = t.budgetRowNo ? `${t.budgetRowNo} mapped` : '<span style="color:var(--amber);">No budget row</span>';
+      const sowExists = (state.sowFilenames || []).includes(`${t.category}.docx`);
+      const budgetOK = !!t.budgetRowNo;
+      // Tile shows the category name large, with three small status dots
+      // (suppliers, budget mapping, SOW). Greyed dots mean missing.
       return `
-        <div class="rfq-pick-row" data-cat="${escapeHtml(t.category)}">
-          <div class="rfq-pick-main">
-            <div class="rfq-pick-name">${escapeHtml(t.category)}</div>
-            <div class="rfq-pick-meta">${supplierCount} active suppliers · ${budgetLabel}</div>
+        <button class="rfq-tile" data-cat="${escapeHtml(t.category)}" type="button">
+          <div class="rfq-tile-name">${escapeHtml(t.category)}</div>
+          <div class="rfq-tile-meta">
+            <span class="rfq-tile-dot ${supplierCount > 0 ? 'ok' : 'warn'}" title="${supplierCount} active suppliers">${supplierCount} sup</span>
+            <span class="rfq-tile-dot ${budgetOK ? 'ok' : 'warn'}" title="${budgetOK ? 'Budget row ' + t.budgetRowNo : 'No budget row mapped'}">${budgetOK ? t.budgetRowNo : 'no row'}</span>
+            <span class="rfq-tile-dot ${sowExists ? 'ok' : 'warn'}" title="${sowExists ? t.category + '.docx found' : t.category + '.docx missing'}">${sowExists ? 'SOW' : 'no SOW'}</span>
           </div>
-          <div class="rfq-pick-arrow">›</div>
-        </div>`;
+        </button>`;
     }).join('');
-    listEl.querySelectorAll('.rfq-pick-row').forEach(el => {
+    gridEl.querySelectorAll('.rfq-tile').forEach(el => {
       el.addEventListener('click', () => {
         const cat = el.dataset.cat;
         wizard.trade = state.appConfig.trades.find(t => t.category === cat);
@@ -106,8 +110,8 @@ function renderStep1Trade(root) {
       });
     });
   }
-  renderList('');
-  document.getElementById('rfq-trade-search').addEventListener('input', (e) => renderList(e.target.value));
+  renderGrid('');
+  document.getElementById('rfq-trade-search').addEventListener('input', (e) => renderGrid(e.target.value));
 }
 
 // --------- Step 2: Pick suppliers ---------
@@ -118,14 +122,20 @@ function renderStep2Suppliers(root) {
     .sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
   const empty = suppliers.length === 0;
   root.innerHTML = `
-    <div class="info-card mb-12">
-      <div style="font-weight:600;">Select Suppliers For ${escapeHtml(cat)}</div>
-      <div class="text-muted text-small mt-4">Each selected supplier receives a separate email with the same body.</div>
+    <div class="info-card mb-12" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;">Select Suppliers For ${escapeHtml(cat)}</div>
+        <div class="text-muted text-small mt-4">Each selected supplier receives a separate email with the same body.</div>
+      </div>
+      <button class="btn-secondary small" id="rfq-add-company">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Company
+      </button>
     </div>
     ${empty ? `
       <div class="empty-state">
         <div>No Active Suppliers For ${escapeHtml(cat)}</div>
-        <div class="text-small mt-8">Add suppliers under this trade in Settings → Trades / Suppliers.</div>
+        <div class="text-small mt-8">Click <strong>Add Company</strong> above to add one.</div>
       </div>` : `
       <div class="rfq-supplier-grid" id="rfq-supplier-grid">
         ${suppliers.map(s => `
@@ -148,6 +158,14 @@ function renderStep2Suppliers(root) {
     if (wizard.selectedSupplierIds.size === 0) { showToast('Select At Least One Supplier', 'error'); return; }
     wizard.step = 3;
     renderWizard();
+  });
+  document.getElementById('rfq-add-company').addEventListener('click', () => {
+    // Open the company editor preset to this trade. After save, auto-tick the
+    // new supplier and re-render Step 2 so it appears in the list.
+    openCompanyEditor(null, cat, (newSupplier) => {
+      if (newSupplier && newSupplier.id) wizard.selectedSupplierIds.add(newSupplier.id);
+      renderWizard();
+    });
   });
   if (!empty) {
     document.querySelectorAll('.rfq-supplier-row').forEach(row => {
@@ -312,7 +330,10 @@ async function buildSnapshot() {
   const filesListHtml = buildFilesListHtml(files);
 
   // Build {tradiesLink} as a clickable link
-  const tradiesLinkHtml = `<a href="${escapeHtml(tradiesShareLink)}">${escapeHtml(tradiesFolderName)}</a>`;
+  // target="_blank" so clicking the link in the preview opens a new tab
+  // rather than navigating away from the wizard. The recipient's email client
+  // decides behaviour for the actual sent email.
+  const tradiesLinkHtml = `<a href="${escapeHtml(tradiesShareLink)}" target="_blank" rel="noopener">${escapeHtml(tradiesFolderName)}</a>`;
 
   // Resolve signature
   const sig = state.appConfig.signature || {};
@@ -356,24 +377,12 @@ function computeRespondByDate(days) {
 
 function buildFilesListHtml(files) {
   if (!files || files.length === 0) {
-    return '<p style="color:#777;font-style:italic;">No files in drawings folder yet.</p>';
+    return '<p style="color:#777;font-style:italic;margin:0;">No files in drawings folder yet.</p>';
   }
-  const rows = files.map(f => `
-    <tr>
-      <td style="padding:6px 12px 6px 0;border-bottom:1px solid #eee;">${escapeHtml(f.name)}</td>
-      <td style="padding:6px 0;border-bottom:1px solid #eee;color:#666;white-space:nowrap;">${formatDate(f.lastModifiedDateTime)}</td>
-    </tr>
-  `).join('');
-  return `
-    <table style="border-collapse:collapse;font-size:13px;margin-top:8px;">
-      <thead>
-        <tr>
-          <th style="text-align:left;padding:6px 12px 6px 0;border-bottom:2px solid #999;">File Name</th>
-          <th style="text-align:left;padding:6px 0;border-bottom:2px solid #999;">Date Modified</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  const rows = files.map(f =>
+    `<tr><td style="padding:6px 12px 6px 0;border-bottom:1px solid #eee;">${escapeHtml(f.name)}</td><td style="padding:6px 0;border-bottom:1px solid #eee;color:#666;white-space:nowrap;">${formatDate(f.lastModifiedDateTime)}</td></tr>`
+  ).join('');
+  return `<table style="border-collapse:collapse;font-size:13px;margin:0;"><thead><tr><th style="text-align:left;padding:6px 12px 6px 0;border-bottom:2px solid #999;">File Name</th><th style="text-align:left;padding:6px 0;border-bottom:2px solid #999;">Date Modified</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function formatDate(iso) {
@@ -385,38 +394,27 @@ function formatDate(iso) {
 }
 
 function buildEmailHtml(snapshot, supplier) {
-  const values = {
-    firstName: supplier.contactName || '',
-    companyName: supplier.companyName || '',
-    jobCode: snapshot.job.jobCode,
-    jobName: snapshot.job.jobName,
-    streetAddress: snapshot.streetAddress,
-    fullAddress: snapshot.job.address,
-    tradeName: snapshot.trade.category,
-    requirements: wizard.requirements,
-    tradiesLink: snapshot.tradiesLinkHtml,
-    filesList: snapshot.filesListHtml,
-    respondByDate: snapshot.respondByDate,
-    signature: snapshot.signatureHtml
-  };
-  // Replace placeholders. {tradiesLink}, {filesList}, {signature} carry HTML;
-  // {requirements} is plain user text — escape it.
-  // We do escaping only for plain-text placeholders.
+  // Plain-text placeholders are HTML-escaped; HTML-bearing placeholders
+  // (tradiesLink, filesList, signature) are passed through as-is.
   const safeRequirements = escapeHtml(wizard.requirements).replace(/\n/g, '<br>');
   const safeValues = {
-    ...values,
+    firstName: escapeHtml(supplier.contactName || ''),
+    companyName: escapeHtml(supplier.companyName || ''),
+    jobCode: escapeHtml(snapshot.job.jobCode),
+    jobName: escapeHtml(snapshot.job.jobName),
+    streetAddress: escapeHtml(snapshot.streetAddress),
+    fullAddress: escapeHtml(snapshot.job.address),
+    tradeName: escapeHtml(snapshot.trade.category),
     requirements: safeRequirements,
-    firstName: escapeHtml(values.firstName),
-    companyName: escapeHtml(values.companyName),
-    jobCode: escapeHtml(values.jobCode),
-    jobName: escapeHtml(values.jobName),
-    streetAddress: escapeHtml(values.streetAddress),
-    fullAddress: escapeHtml(values.fullAddress),
-    tradeName: escapeHtml(values.tradeName),
-    respondByDate: escapeHtml(values.respondByDate)
+    tradiesLink: snapshot.tradiesLinkHtml,
+    filesList: snapshot.filesListHtml,
+    respondByDate: escapeHtml(snapshot.respondByDate),
+    signature: snapshot.signatureHtml
   };
-  const rendered = renderTemplate(snapshot.bodyTemplate, safeValues);
-  return templateToHtml(rendered);
+  // Convert linebreaks BEFORE substitution so HTML inside placeholder values
+  // (especially the {filesList} table) doesn't get torn apart by \n → <br>.
+  const bodyAsHtml = templateToHtml(snapshot.bodyTemplate);
+  return renderTemplate(bodyAsHtml, safeValues);
 }
 
 function renderPreview() {
@@ -477,7 +475,10 @@ async function doBatchSend() {
         toRecipients: [supplier.email],
         ccRecipients: snap.projectTeamCC,
         replyToRecipients: [state.currentUserEmail],
-        attachments: snap.sowAttachment ? [snap.sowAttachment] : []
+        attachments: snap.sowAttachment ? [snap.sowAttachment] : [],
+        // Custom header — admin can target this in Defender / mail flow rules
+        // to whitelist all RFQs from this app.
+        customHeaders: { 'x-ah-estimating': 'rfq-v1' }
       });
       sentEntries.push({
         id: supplier.id,

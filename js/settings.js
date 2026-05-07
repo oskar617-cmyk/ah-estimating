@@ -11,6 +11,9 @@ import { loadEmailTemplatesTab } from './email-templates.js';
 
 export async function openSettings() {
   navigate('settings-screen', {});
+  // Force a fresh SOW filename scan each time Settings opens, so newly
+  // uploaded SOW Word docs are reflected in the indicators.
+  state.sowFilenames = null;
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
   document.querySelector('.settings-tab[data-tab="catalog"]').classList.add('active');
