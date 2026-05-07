@@ -86,15 +86,18 @@ function renderStep1Trade(root) {
       const supplierCount = (state.suppliersData.suppliers || []).filter(s => (s.trades || []).includes(t.category) && s.active !== false).length;
       const sowExists = (state.sowFilenames || []).includes(`${t.category}.docx`);
       const budgetOK = !!t.budgetRowNo;
-      // Tile shows the category name large, with three small status dots
-      // (suppliers, budget mapping, SOW). Greyed dots mean missing.
+      const peopleSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" style="vertical-align:-1px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+      const supTitle = `${supplierCount} active supplier${supplierCount === 1 ? '' : 's'}`;
+      const budgetTitle = budgetOK ? `Budget row ${t.budgetRowNo}` : 'No budget row mapped';
+      const sowTitle = sowExists ? `${t.category}.docx found in SOW Templates` : `${t.category}.docx missing from SOW Templates`;
+      // Tile: trade name + three small status pills (suppliers / budget / SOW)
       return `
         <button class="rfq-tile" data-cat="${escapeHtml(t.category)}" type="button">
           <div class="rfq-tile-name">${escapeHtml(t.category)}</div>
           <div class="rfq-tile-meta">
-            <span class="rfq-tile-dot ${supplierCount > 0 ? 'ok' : 'warn'}" title="${supplierCount} active suppliers">${supplierCount} sup</span>
-            <span class="rfq-tile-dot ${budgetOK ? 'ok' : 'warn'}" title="${budgetOK ? 'Budget row ' + t.budgetRowNo : 'No budget row mapped'}">${budgetOK ? t.budgetRowNo : 'no row'}</span>
-            <span class="rfq-tile-dot ${sowExists ? 'ok' : 'warn'}" title="${sowExists ? t.category + '.docx found' : t.category + '.docx missing'}">${sowExists ? 'SOW' : 'no SOW'}</span>
+            <span class="rfq-tile-dot ${supplierCount > 0 ? 'ok' : 'warn'}" title="${escapeHtml(supTitle)}">${supplierCount} ${peopleSvg}</span>
+            <span class="rfq-tile-dot ${budgetOK ? 'ok' : 'warn'}" title="${escapeHtml(budgetTitle)}">${budgetOK ? escapeHtml(t.budgetRowNo) : 'no row'}</span>
+            <span class="rfq-tile-dot ${sowExists ? 'ok' : 'warn'}" title="${escapeHtml(sowTitle)}">${sowExists ? 'SOW' : 'no SOW'}</span>
           </div>
         </button>`;
     }).join('');

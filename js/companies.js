@@ -15,6 +15,9 @@ export function openCompanyEditor(idx, presetTrade, onSaved) {
   state.editingSupplier = { idx, supplier: sup, onSaved: onSaved || null };
   state.supplierMultiSelectTrades = [...(sup.trades || [])];
   showModal(`
+    <button class="modal-close-x" onclick="closeModal()" title="Close" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
     <div class="modal-title">${isNew ? 'Add Company' : 'Edit Company'}</div>
     <div class="form-row">
       <div class="form-group">
@@ -24,7 +27,6 @@ export function openCompanyEditor(idx, presetTrade, onSaved) {
       <div class="form-group">
         <label class="form-label">Contact First Name</label>
         <input id="sup-contact" type="text" value="${escapeHtml(sup.contactName)}" placeholder="Bob" />
-        <div class="form-hint">Used in greeting "Hi Bob,"</div>
       </div>
     </div>
     <div class="form-row">
@@ -40,19 +42,20 @@ export function openCompanyEditor(idx, presetTrade, onSaved) {
     <div class="form-group">
       <label class="form-label">Trades / Suppliers Covered</label>
       <div class="multi-chips" id="sup-trades-chips"></div>
-      <div class="form-hint">Click items below to toggle. A company can cover multiple items.</div>
-      <div class="mt-8" id="sup-trades-picker" style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto;padding:8px;background:var(--bg-3);border:1px solid var(--line);border-radius:8px;"></div>
+      <div class="mt-4" id="sup-trades-picker" style="display:flex;flex-wrap:wrap;gap:5px;max-height:100px;overflow-y:auto;padding:6px;background:var(--bg-3);border:1px solid var(--line);border-radius:8px;"></div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Notes (Optional)</label>
-      <textarea id="sup-notes" rows="3">${escapeHtml(sup.notes || '')}</textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label flex-row" style="gap:10px;cursor:pointer;" onclick="toggleSupActive()">
-        <span class="toggle${sup.active !== false ? ' on' : ''}" id="sup-active-toggle"></span>
-        <span>Active</span>
-      </label>
-      <div class="form-hint">Inactive companies won't appear in the RFQ recipient picker.</div>
+    <div class="form-row" style="align-items:flex-start;">
+      <div class="form-group" style="flex:2;">
+        <label class="form-label">Notes (Optional)</label>
+        <textarea id="sup-notes" rows="2">${escapeHtml(sup.notes || '')}</textarea>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Status</label>
+        <label class="flex-row" style="gap:10px;cursor:pointer;padding:6px 0;" onclick="toggleSupActive()">
+          <span class="toggle${sup.active !== false ? ' on' : ''}" id="sup-active-toggle"></span>
+          <span class="text-small">Active</span>
+        </label>
+      </div>
     </div>
     <div class="modal-actions">
       ${isNew ? '' : '<button class="btn-danger small" style="margin-right:auto;" onclick="deleteCompany()">Delete</button>'}
