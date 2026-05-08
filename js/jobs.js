@@ -7,6 +7,7 @@ import { navigate, setOnReturnToJobs } from './nav.js';
 import { graphFetch, getAhSiteId, encodeUriPath, readJson, uploadJson } from './graph.js';
 import { logAudit } from './audit.js';
 import { showToast, escapeHtml } from './ui.js';
+import { renderPendingReviewSection, attachPendingReviewHandlers } from './pending-review.js';
 
 export async function loadJobs() {
   const container = document.getElementById('jobs-content');
@@ -223,6 +224,8 @@ function renderJobDetail(tracker) {
         Send New RFQ (Est Only)
       </button>`;
 
+  const pendingReviewHtml = renderPendingReviewSection(tracker);
+
   container.innerHTML = `
     <div class="job-header">
       <div class="job-header-code">${escapeHtml(state.currentJob.jobCode)} ${escapeHtml(state.currentJob.jobName)}</div>
@@ -231,6 +234,7 @@ function renderJobDetail(tracker) {
         <div><strong>Project Team:</strong> ${escapeHtml(teamDisplay)}</div>
       </div>
     </div>
+    ${pendingReviewHtml}
     <div class="section-title">RFQs <span class="text-muted text-small" style="font-weight: normal; text-transform: none; letter-spacing: 0;">(${rfqs.length} Total)</span></div>
     ${rfqsHtml}
     ${sendBtn}
@@ -240,6 +244,10 @@ function renderJobDetail(tracker) {
       <a href="${escapeHtml(state.currentJob.webUrl)}" target="_blank" style="color: var(--blue); text-decoration: none; font-size: 14px;">Open ${escapeHtml(state.currentJob.folderName)} In SharePoint</a>
     </div>
   `;
+  // Wire up Pending Review action buttons (Confirm/Edit/Reject)
+  if (pendingReviewHtml) {
+    attachPendingReviewHandlers(tracker, state.currentJob.folderName, () => loadJobDetail());
+  }
 }
 
 // Aggregate the highest-priority status across all batches under one trade.

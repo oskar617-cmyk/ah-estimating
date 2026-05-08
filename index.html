@@ -14,6 +14,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.7.1/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pizzip@3.2.0/dist/pizzip.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f1410; --bg-2: #161c18; --bg-3: #1f2722; --line: #2a332e;
@@ -428,6 +430,168 @@
     .catalog-row > * { width: 100%; }
     .catalog-actions { justify-content: flex-start; }
     .catalog-companies { padding: 0 12px 12px 12px; }
+  }
+
+  /* ====== NOTIFICATION PANEL (Phase 4c-iv) ====== */
+  .bell-badge {
+    position: absolute;
+    top: -2px; right: -2px;
+    min-width: 16px; height: 16px;
+    border-radius: 8px;
+    background: var(--red);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  #bell-btn { position: relative; }
+
+  .notif-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 150;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .notif-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .notif-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(420px, 100vw);
+    background: var(--bg-2);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow-strong);
+    z-index: 160;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .notif-panel.open { transform: translateX(0); }
+  .notif-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .notif-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .notif-item {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, opacity 0.15s;
+  }
+  .notif-item:hover { border-color: var(--green-dim); }
+  .notif-item.read { opacity: 0.55; }
+  .notif-row1 {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .notif-classification {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .notif-cls-quote        { background: var(--green-bg); color: var(--green); }
+  .notif-cls-question     { background: var(--purple-bg); color: var(--purple); }
+  .notif-cls-suspicious   { background: var(--red-bg); color: var(--red); }
+  .notif-cls-out-of-office{ background: var(--bg-3); color: var(--text-3); }
+  .notif-cls-decline      { background: var(--bg-3); color: var(--text-2); }
+  .notif-cls-unrelated    { background: var(--amber-bg); color: var(--amber); }
+  .notif-cls-pending-match{ background: var(--amber-bg); color: var(--amber); }
+  .notif-job {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--green);
+  }
+  .notif-time {
+    font-size: 11px;
+    color: var(--text-3);
+    margin-left: auto;
+  }
+  .notif-subline {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .notif-amount {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--green);
+    margin-top: 4px;
+  }
+  .notif-subject {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ====== PENDING REVIEW (Job Detail) ====== */
+  .pending-review-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  @media (max-width: 720px) {
+    .pending-review-grid { grid-template-columns: 1fr; }
+    .pending-review-preview { display: none; }
+    .pending-review-row.active + .pending-review-preview { display: block; }
+  }
+  .pending-review-list {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .pending-review-row {
+    background: var(--bg-2);
+    border: 1px solid var(--amber);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pending-review-row:hover { border-color: var(--green); }
+  .pending-review-row.active { border-color: var(--green); background: var(--bg-3); }
+  .pending-review-main { flex: 1; }
+  .pending-review-title { font-weight: 500; font-size: 14px; }
+  .pending-review-amount {
+    font-size: 18px; font-weight: 600;
+    color: var(--green);
+    margin-top: 4px;
+  }
+  .pending-review-meta { margin-top: 4px; }
+  .pending-review-actions {
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+  }
+  .pending-review-preview {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    min-height: 380px;
+    overflow: hidden;
   }
 
   /* ====== STATUS BADGES ====== */
@@ -854,6 +1018,12 @@
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
         </svg>
       </button>
+      <button class="icon-btn" id="bell-btn" title="Notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
       <button class="icon-btn" onclick="openSettings()" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
@@ -1074,6 +1244,18 @@
 <div id="modal-backdrop" class="modal-backdrop">
   <div class="modal" id="modal-content"></div>
 </div>
+
+<!-- Notification side panel (Phase 4c-iv) -->
+<div id="notif-overlay" class="notif-overlay"></div>
+<aside id="notif-panel" class="notif-panel">
+  <div class="notif-header">
+    <div style="font-size:16px;font-weight:600;">Notifications</div>
+    <button id="notif-close" class="icon-btn-tiny" title="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div id="notif-list" class="notif-list"></div>
+</aside>
 
 <div id="toast"></div>
 

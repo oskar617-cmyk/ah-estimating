@@ -9,6 +9,8 @@
 import { initAuth, setOnAuthed } from './auth.js';
 import { initModalBackdrop } from './ui.js';
 import { loadJobs } from './jobs.js';
+import { startInboxPoller, stopInboxPoller } from './inbox.js';
+import { initNotificationPanel } from './notifications.js';
 import './nav.js';
 import './new-job.js';
 import './settings.js';
@@ -16,10 +18,19 @@ import './catalog.js';
 import './companies.js';
 import './email-templates.js';
 import './send-rfq.js';
+import './reply-matcher.js';
+import './pdf-tools.js';
+import './classification.js';
+import './mail-filer.js';
+import './pending-review.js';
 
 // Wire up the post-sign-in callback (auth doesn't import jobs directly to
 // keep auth as a leaf module).
-setOnAuthed(() => loadJobs());
+setOnAuthed(() => {
+  loadJobs();
+  initNotificationPanel();
+  startInboxPoller();
+});
 
 // Modal backdrop click-to-dismiss
 initModalBackdrop();
@@ -34,6 +45,13 @@ document.addEventListener('DOMContentLoaded', () => {
       e.target.setSelectionRange(start, start);
     });
   }
+});
+
+// Stop poller on tab hide / restart on show — saves API calls when tab in
+// background and avoids running stale auth tokens after long idle.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') stopInboxPoller();
+  else if (document.visibilityState === 'visible') startInboxPoller();
 });
 
 // Service Worker for PWA installability

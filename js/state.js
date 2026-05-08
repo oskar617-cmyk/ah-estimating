@@ -19,5 +19,13 @@ export const state = {
   supplierMultiSelectTrades: [],
   expandedCatalogItems: new Set(),
   activeTemplateCategory: null,   // Email Templates tab: '__default__' or a category name
-  sowFilenames: null              // Cached array of files in SOW Templates folder (loaded once per Settings open)
+  sowFilenames: null,             // Cached array of files in SOW Templates folder
+  // Inbox / notifications (Phase 4c-iv)
+  inboxPollerHandle: null,        // setInterval handle (so we can stop on logout)
+  notifications: [],              // array of notification objects (newest first)
+  pendingReview: [],              // entries auto-written to budget Excel awaiting confirmation
+  notificationPanelOpen: false,
+  inboxLastPolledAt: null,        // ISO timestamp of last successful poll
+  processedMessageIds: new Set(), // dedupe: ids of messages already turned into notifications this session
+  jobTrackerCache: new Map()      // jobFolderName -> rfq-tracker.json (cached during inbox processing)
 };

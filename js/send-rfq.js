@@ -11,7 +11,8 @@ import { navigate, showScreen } from './nav.js';
 import {
   graphFetch, getAhSiteId, encodeUriPath,
   readJson, uploadJson, listFiles, readBinary, fileExists,
-  createAnonymousReadLink, sendMail, arrayBufferToBase64
+  createAnonymousReadLink, sendMail, arrayBufferToBase64,
+  findSentMessage
 } from './graph.js';
 import { loadAppConfig, loadSuppliers, logAudit } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
@@ -641,6 +642,7 @@ async function doBatchSend() {
     const el = document.getElementById('prog-' + itemId);
     try {
       const html = buildEmailHtml(snap, supplier);
+      const sendStartedAt = new Date().toISOString();
       await sendMail({
         subject: snap.subject,
         htmlBody: html,
@@ -652,6 +654,17 @@ async function doBatchSend() {
         // to whitelist all RFQs from this app.
         customHeaders: { 'x-ah-estimating': 'rfq-v1' }
       });
+      // Capture the internetMessageId from Sent Items so replies can be
+      // matched via In-Reply-To header (Tier 1 of the matching strategy).
+      // /me/sendMail returns 202 with no body, so we have to look it up.
+      // Small delay gives Exchange a moment to index the sent message.
+      let sentRef = null;
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        sentRef = await findSentMessage(snap.subject, supplier.email, sendStartedAt);
+      } catch (lookupErr) {
+        console.warn(`Could not capture sent message id for ${supplier.email}:`, lookupErr);
+      }
       sentEntries.push({
         id: supplier.id,
         companyName: supplier.companyName,
@@ -661,7 +674,11 @@ async function doBatchSend() {
         sentAt: new Date().toISOString(),
         lastFollowupAt: null,
         followupCount: 0,
-        replies: []
+        replies: [],
+        // For reply matching:
+        internetMessageId: sentRef ? sentRef.internetMessageId : null,
+        conversationId: sentRef ? sentRef.conversationId : null,
+        sentMessageId: sentRef ? sentRef.id : null
       });
       el.classList.remove('active'); el.classList.add('done');
       el.querySelector('.progress-icon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;

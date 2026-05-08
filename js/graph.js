@@ -252,5 +252,135 @@ export async function listFilenames(siteId, folderPath) {
   }
 }
 
+// ---------- Mail / Inbox helpers (Phase 4c-iv) ----------
+
+// Find a recently-sent message in Sent Items by subject + recipient.
+// Returns { id, internetMessageId, conversationId } or null.
+// Used right after /me/sendMail (which doesn't return the message id) to
+// capture the headers we need for later reply-matching.
+export async function findSentMessage(subject, recipientEmail, sinceIso) {
+  // Search by recipient + subject in /me/mailFolders/SentItems/messages.
+  // Microsoft Graph requires a $filter using basic comparison (no contains
+  // on subject), but we can filter by toRecipients/emailAddress/address.
+  // Newest first — most recent send for this recipient is the one we want.
+  const filter = `toRecipients/any(r:r/emailAddress/address eq '${recipientEmail.replace(/'/g, "''").toLowerCase()}')`;
+  const url =
+    `/me/mailFolders/SentItems/messages` +
+    `?$filter=${encodeURIComponent(filter)}` +
+    `&$orderby=sentDateTime desc` +
+    `&$top=10` +
+    `&$select=id,subject,internetMessageId,conversationId,sentDateTime`;
+  const result = await graphFetch(url);
+  const messages = result.value || [];
+  // Pick the most recent one whose subject matches and was sent after sinceIso
+  const since = sinceIso ? new Date(sinceIso).getTime() : 0;
+  const match = messages.find(m =>
+    (m.subject || '').trim() === subject.trim() &&
+    new Date(m.sentDateTime).getTime() >= since
+  );
+  if (!match) return null;
+  return {
+    id: match.id,
+    internetMessageId: match.internetMessageId,
+    conversationId: match.conversationId,
+    sentDateTime: match.sentDateTime
+  };
+}
+
+// List unread messages in the inbox newer than `sinceIso`. Returns minimal
+// metadata for the inbox poller. We page automatically to handle bursts.
+export async function listInboxSince(sinceIso, maxMessages = 50) {
+  const out = [];
+  let url =
+    `/me/mailFolders/Inbox/messages` +
+    `?$filter=${encodeURIComponent(`receivedDateTime ge ${sinceIso}`)}` +
+    `&$orderby=receivedDateTime asc` +
+    `&$top=25` +
+    `&$select=id,subject,from,toRecipients,ccRecipients,internetMessageId,conversationId,receivedDateTime,bodyPreview,hasAttachments,parentFolderId,internetMessageHeaders`;
+  while (url && out.length < maxMessages) {
+    const r = await graphFetch(url);
+    out.push(...(r.value || []));
+    url = r['@odata.nextLink'] || null;
+    // graphFetch supports absolute URLs; @odata.nextLink is full URL.
+  }
+  return out.slice(0, maxMessages);
+}
+
+// Get a single message's full body + headers (used when polling found a
+// candidate by id and we need more detail for classification).
+export async function getMessage(messageId) {
+  return graphFetch(
+    `/me/messages/${messageId}` +
+    `?$select=id,subject,from,toRecipients,ccRecipients,internetMessageId,conversationId,receivedDateTime,body,bodyPreview,hasAttachments,internetMessageHeaders,parentFolderId`
+  );
+}
+
+// List attachments for a message (metadata only).
+export async function listMessageAttachments(messageId) {
+  const r = await graphFetch(
+    `/me/messages/${messageId}/attachments?$select=id,name,contentType,size,isInline`
+  );
+  return (r.value || []).filter(a => !a.isInline);
+}
+
+// Download an attachment as ArrayBuffer (raw bytes for PDF parsing or
+// re-saving to SharePoint).
+export async function getAttachmentBytes(messageId, attachmentId) {
+  const token = await getToken();
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments/${attachmentId}/$value`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Attachment fetch failed: ${res.status}`);
+  return res.arrayBuffer();
+}
+
+// Find an immediate child mail folder by name within a parent folder.
+// parentId can be a wellKnownName like 'inbox' or a folder id.
+async function findChildMailFolder(parentId, name) {
+  const r = await graphFetch(
+    `/me/mailFolders/${parentId}/childFolders?$top=200&$select=id,displayName`
+  );
+  const match = (r.value || []).find(f => (f.displayName || '').toLowerCase() === name.toLowerCase());
+  return match || null;
+}
+
+// Ensure mail folder exists at `Inbox / Jobs / <jobFolderName>`. Returns the
+// leaf folder's id. Creates Jobs and the leaf if missing.
+export async function ensureJobMailFolder(jobFolderName) {
+  // 'inbox' is a well-known name that resolves to the user's Inbox.
+  let jobsFolder = await findChildMailFolder('inbox', 'Jobs');
+  if (!jobsFolder) {
+    jobsFolder = await graphFetch(`/me/mailFolders/inbox/childFolders`, {
+      method: 'POST',
+      body: JSON.stringify({ displayName: 'Jobs' })
+    });
+  }
+  let leaf = await findChildMailFolder(jobsFolder.id, jobFolderName);
+  if (!leaf) {
+    leaf = await graphFetch(`/me/mailFolders/${jobsFolder.id}/childFolders`, {
+      method: 'POST',
+      body: JSON.stringify({ displayName: jobFolderName })
+    });
+  }
+  return leaf.id;
+}
+
+// Move a message to a destination folder id. Returns the new message id.
+export async function moveMessage(messageId, destinationFolderId) {
+  return graphFetch(`/me/messages/${messageId}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ destinationId: destinationFolderId })
+  });
+}
+
+// Mark a message as read.
+export async function markMessageRead(messageId, isRead = true) {
+  return graphFetch(`/me/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isRead })
+  });
+}
+
 // Helper exported for callers that need to base64-encode binary attachments.
 export { arrayBufferToBase64 };
