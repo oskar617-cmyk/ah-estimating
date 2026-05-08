@@ -536,7 +536,7 @@ function replaceAcrossRuns(xml, placeholder, replacement, isBlock) {
   return { xml: out, replaced };
 }
 
-
+function buildFilesListHtml(files) {
   if (!files || files.length === 0) {
     return '<p style="color:#777;font-style:italic;margin:0;">No files in drawings folder yet.</p>';
   }
