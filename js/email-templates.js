@@ -44,18 +44,66 @@ const PLACEHOLDERS = [
 // ----- Migration / seeding -----
 
 function ensureTemplatesShape() {
+  let changed = false;
   if (!state.appConfig.emailTemplates) {
     state.appConfig.emailTemplates = {
       default: DEFAULT_EMAIL_BODY,
       subjectTemplate: DEFAULT_SUBJECT_TEMPLATE,
-      byCategory: {}
+      byCategory: {},
+      requirementsMigrated: true
     };
+    return true;
   }
   if (!state.appConfig.emailTemplates.subjectTemplate) {
     state.appConfig.emailTemplates.subjectTemplate = DEFAULT_SUBJECT_TEMPLATE;
+    changed = true;
   }
   if (!state.appConfig.emailTemplates.byCategory) {
     state.appConfig.emailTemplates.byCategory = {};
+    changed = true;
+  }
+  // One-time migration: requirements moved out of the email body and into
+  // the SOW Word doc. Strip the two-line block from the saved default
+  // template (and any per-trade overrides) if it still contains them.
+  if (!state.appConfig.emailTemplates.requirementsMigrated) {
+    const beforeDefault = state.appConfig.emailTemplates.default;
+    state.appConfig.emailTemplates.default = stripLegacyRequirementsLines(beforeDefault);
+    if (state.appConfig.emailTemplates.default !== beforeDefault) changed = true;
+    const overrides = state.appConfig.emailTemplates.byCategory;
+    for (const cat of Object.keys(overrides)) {
+      const before = overrides[cat];
+      overrides[cat] = stripLegacyRequirementsLines(before);
+      if (overrides[cat] !== before) changed = true;
+    }
+    state.appConfig.emailTemplates.requirementsMigrated = true;
+    changed = true;
+  }
+  return changed;
+}
+
+// Remove the legacy two-line block:
+//   Job-specific requirements:
+//   {requirements}
+// Conservative: only matches that exact pattern (case-insensitive on the
+// label) so user wording isn't accidentally clobbered.
+function stripLegacyRequirementsLines(template) {
+  if (!template) return template;
+  // Match the label line + the {requirements} placeholder line that follows.
+  // Trim trailing newlines so we don't leave a double-blank gap.
+  return template.replace(
+    /^[ \t]*Job-specific requirements:[ \t]*\r?\n[ \t]*\{requirements\}[ \t]*\r?\n?/im,
+    ''
+  );
+}
+
+// Run the migration eagerly and persist if anything changed. Callers that
+// read templates outside the Email Templates tab (e.g. the RFQ send flow)
+// should `await` this before reading, so the cleaned template is what
+// actually gets used.
+export async function ensureTemplatesShapePersisted() {
+  const changed = ensureTemplatesShape();
+  if (changed) {
+    try { await saveAppConfig(); } catch (e) { console.warn('Email templates migration persist failed:', e); }
   }
 }
 
@@ -108,7 +156,10 @@ export function templateToHtml(templateStr) {
 
 export async function loadEmailTemplatesTab() {
   await loadAppConfig();
-  ensureTemplatesShape();
+  const changed = ensureTemplatesShape();
+  if (changed) {
+    try { await saveAppConfig(); } catch (e) { console.warn('Email templates migration persist failed:', e); }
+  }
   state.activeTemplateCategory = state.activeTemplateCategory || '__default__';
   renderEmailTemplatesTab();
 }

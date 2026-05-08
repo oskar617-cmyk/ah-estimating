@@ -15,7 +15,7 @@ import {
 } from './graph.js';
 import { loadAppConfig, loadSuppliers, logAudit } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
-import { getTemplateForCategory, getSubjectTemplate, renderTemplate, templateToHtml } from './email-templates.js';
+import { getTemplateForCategory, getSubjectTemplate, renderTemplate, templateToHtml, ensureTemplatesShapePersisted } from './email-templates.js';
 import { openCompanyEditor } from './companies.js';
 
 // In-memory wizard state. Reset each time the wizard opens.
@@ -87,27 +87,34 @@ function renderStep1Trade(root) {
       const sowExists = (state.sowFilenames || []).includes(`${t.category}.docx`);
       const budgetOK = !!t.budgetRowNo;
       const peopleSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" style="vertical-align:-1px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-      const supTitle = `${supplierCount} active supplier${supplierCount === 1 ? '' : 's'}`;
-      const budgetTitle = budgetOK ? `Budget row ${t.budgetRowNo}` : 'No budget row mapped';
-      const sowTitle = sowExists ? `${t.category}.docx found in SOW Templates` : `${t.category}.docx missing from SOW Templates`;
-      // Tile: trade name + three small status pills (suppliers / budget / SOW)
+      // No tooltips on the status pills — the pill labels themselves are
+      // self-explanatory, and tooltips don't fire reliably on touch devices.
       return `
         <button class="rfq-tile" data-cat="${escapeHtml(t.category)}" type="button">
           <div class="rfq-tile-name">${escapeHtml(t.category)}</div>
           <div class="rfq-tile-meta">
-            <span class="rfq-tile-dot ${supplierCount > 0 ? 'ok' : 'warn'}" title="${escapeHtml(supTitle)}">${supplierCount} ${peopleSvg}</span>
-            <span class="rfq-tile-dot ${budgetOK ? 'ok' : 'warn'}" title="${escapeHtml(budgetTitle)}">${budgetOK ? escapeHtml(t.budgetRowNo) : 'no row'}</span>
-            <span class="rfq-tile-dot ${sowExists ? 'ok' : 'warn'}" title="${escapeHtml(sowTitle)}">${sowExists ? 'SOW' : 'no SOW'}</span>
+            <span class="rfq-tile-dot ${supplierCount > 0 ? 'ok' : 'warn'}">${supplierCount} ${peopleSvg}</span>
+            <span class="rfq-tile-dot ${budgetOK ? 'ok' : 'warn'}">${budgetOK ? escapeHtml(t.budgetRowNo) : 'no row'}</span>
+            <span class="rfq-tile-dot ${sowExists ? 'ok' : 'warn'}">${sowExists ? 'SOW' : 'no SOW'}</span>
           </div>
         </button>`;
     }).join('');
     gridEl.querySelectorAll('.rfq-tile').forEach(el => {
       el.addEventListener('click', () => {
         const cat = el.dataset.cat;
-        wizard.trade = state.appConfig.trades.find(t => t.category === cat);
-        wizard.budgetRowNo = wizard.trade.budgetRowNo;
-        wizard.daysToRespond = wizard.trade.daysToRespond || CONFIG.defaultDaysToRespond;
-        wizard.daysToFollowup = wizard.trade.daysToFollowup || CONFIG.defaultDaysToFollowup;
+        const newTrade = state.appConfig.trades.find(t => t.category === cat);
+        // If user picks a different trade than last time, wipe per-trade work
+        // (selected suppliers + JSR text). Same-trade re-pick keeps state so
+        // pressing Back and forward isn't destructive.
+        const previousCat = wizard.trade ? wizard.trade.category : null;
+        if (previousCat !== cat) {
+          wizard.selectedSupplierIds = new Set();
+          wizard.requirements = '';
+        }
+        wizard.trade = newTrade;
+        wizard.budgetRowNo = newTrade.budgetRowNo;
+        wizard.daysToRespond = newTrade.daysToRespond || CONFIG.defaultDaysToRespond;
+        wizard.daysToFollowup = newTrade.daysToFollowup || CONFIG.defaultDaysToFollowup;
         wizard.step = 2;
         renderWizard();
       });
@@ -293,6 +300,10 @@ async function buildSnapshot() {
   const job = state.currentJob;
   const trade = wizard.trade;
   const siteId = await getAhSiteId();
+
+  // Run any pending email-template migration BEFORE reading templates,
+  // so legacy "{requirements}" lines are stripped from saved config first.
+  await ensureTemplatesShapePersisted();
 
   // Drawings folder path within AH Site Documents library
   const tradiesFolderName = `AAA Docs for Tradies ${job.jobName}`;
