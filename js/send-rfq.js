@@ -197,8 +197,8 @@ function renderStep3Details(root) {
     </div>
     <div class="form-group">
       <label class="form-label">Job-Specific Requirements</label>
-      <textarea id="rfq-requirements" rows="6" placeholder="Describe scope, materials, special conditions, exclusions...">${escapeHtml(wizard.requirements)}</textarea>
-      <div class="form-hint">Inserted into the email body where the template has <code>{requirements}</code>.</div>
+      <textarea id="rfq-requirements" rows="6" placeholder="1. ">${escapeHtml(wizard.requirements)}</textarea>
+      <div class="form-hint">Numbered list — press Enter to start the next line. Inserted into the SOW Word doc (not the email body). Leave empty if there are none.</div>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -225,13 +225,33 @@ function renderStep3Details(root) {
       <button class="btn-primary" id="rfq-next-4">Next: Preview</button>
     </div>
   `;
+  // Auto-numbering: pre-fill with "1. " if empty, and on Enter add next number
+  const reqEl = document.getElementById('rfq-requirements');
+  if (!reqEl.value) reqEl.value = '1. ';
+  reqEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const before = reqEl.value.slice(0, reqEl.selectionStart);
+      const after = reqEl.value.slice(reqEl.selectionEnd);
+      // Find the highest number used so far (anywhere in the textarea)
+      const nums = (reqEl.value.match(/^\s*(\d+)\./gm) || []).map(s => parseInt(s.match(/\d+/)[0], 10));
+      const next = nums.length ? Math.max(...nums) + 1 : 1;
+      const insert = `\n${next}. `;
+      reqEl.value = before + insert + after;
+      const pos = (before + insert).length;
+      reqEl.setSelectionRange(pos, pos);
+    }
+  });
   document.getElementById('rfq-back-2').addEventListener('click', () => { wizard.step = 2; renderWizard(); });
   document.getElementById('rfq-next-4').addEventListener('click', () => {
-    wizard.requirements = document.getElementById('rfq-requirements').value.trim();
+    // Capture verbatim — preserve newlines for SOW insertion
+    const raw = document.getElementById('rfq-requirements').value;
+    // Strip if it's only "1. " (the empty default placeholder)
+    wizard.requirements = (raw.trim() === '1.' || raw.trim() === '1. ') ? '' : raw;
     wizard.daysToRespond = parseInt(document.getElementById('rfq-days-respond').value, 10) || CONFIG.defaultDaysToRespond;
     wizard.daysToFollowup = parseInt(document.getElementById('rfq-days-followup').value, 10) || CONFIG.defaultDaysToFollowup;
     wizard.budgetRowNo = document.getElementById('rfq-budget-row').value || null;
-    if (!wizard.requirements) { showToast('Requirements Cannot Be Empty', 'error'); return; }
+    // Requirements may be empty (becomes "None" in SOW)
     if (!wizard.budgetRowNo) { showToast('Pick A Budget Row', 'error'); return; }
     wizard.step = 4;
     renderWizard();
@@ -290,14 +310,18 @@ async function buildSnapshot() {
 
   // SOW: try to read [Category].docx from SOW Templates folder.
   // If not present, prompt user before continuing.
+  // The SOW template should contain {{REQUIREMENTS}} where the estimator's
+  // job-specific requirements should be inserted. Replaced before sending —
+  // a fresh modified copy is built per-RFQ in memory, never saved to disk.
   const sowFilename = `${trade.category}.docx`;
   const sowExists = await fileExists(siteId, `${CONFIG.commonDocsPath}/SOW Templates`, sowFilename);
   let sowAttachment = null;
   if (sowExists) {
     const buf = await readBinary(siteId, `${CONFIG.commonDocsPath}/SOW Templates`, sowFilename);
+    const modifiedBuf = injectRequirementsIntoDocx(buf, wizard.requirements);
     sowAttachment = {
       name: sowFilename,
-      contentBytes: arrayBufferToBase64(buf),
+      contentBytes: arrayBufferToBase64(modifiedBuf),
       contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     };
   } else {
@@ -378,7 +402,141 @@ function computeRespondByDate(days) {
   return `${dayNames[d.getDay()]} ${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function buildFilesListHtml(files) {
+// Modify a SOW Word doc (.docx ArrayBuffer) by replacing the {{REQUIREMENTS}}
+// placeholder with the estimator's job-specific requirements. Returns a
+// modified ArrayBuffer ready to attach. Original on SharePoint is untouched.
+//
+// How this works (plain language):
+//   A .docx is a zip file containing word/document.xml among others. The
+//   text the user sees lives in that XML inside <w:t> tags. Word sometimes
+//   splits a placeholder like {{REQUIREMENTS}} across multiple <w:t> runs
+//   (e.g. if it was typed with intermediate formatting changes). We work
+//   around that by joining adjacent <w:t> contents inside the same paragraph
+//   before searching for the placeholder.
+//
+// If the placeholder isn't found, the doc is returned unchanged. If
+// requirements is empty/blank, "None" is inserted.
+function injectRequirementsIntoDocx(arrayBuf, requirementsText) {
+  if (typeof PizZip === 'undefined') {
+    throw new Error('PizZip library not loaded — cannot modify SOW Word doc');
+  }
+  const zip = new PizZip(arrayBuf);
+  const docXml = zip.file('word/document.xml');
+  if (!docXml) {
+    console.warn('Unexpected docx structure — word/document.xml missing. Sending unchanged.');
+    return arrayBuf;
+  }
+  let xml = docXml.asText();
+
+  // First pass: try a simple replace in case the placeholder is intact
+  // within a single <w:t> run.
+  const PLACEHOLDER = '{{REQUIREMENTS}}';
+  const wantsListBlock = !!(requirementsText && requirementsText.trim());
+  const replacement = wantsListBlock
+    ? buildRequirementsXml(requirementsText)
+    : 'None';
+
+  let replaced = false;
+  if (xml.includes(PLACEHOLDER)) {
+    // Need to substitute INSIDE a <w:t> run if multi-line list, else plain text
+    if (wantsListBlock) {
+      // Replacing with a multi-paragraph block requires breaking out of the
+      // containing <w:p> paragraph. Find the surrounding paragraph and split.
+      xml = replaceInsideParagraphWithBlock(xml, PLACEHOLDER, replacement);
+    } else {
+      xml = xml.replace(PLACEHOLDER, escapeXml(replacement));
+    }
+    replaced = true;
+  } else {
+    // Second pass: placeholder might be split across <w:t> runs (Word can
+    // do this if styling changed mid-token). Reconstruct visible text per
+    // paragraph, locate the placeholder span, and rewrite it.
+    const result = replaceAcrossRuns(xml, PLACEHOLDER, replacement, wantsListBlock);
+    if (result.replaced) { xml = result.xml; replaced = true; }
+  }
+
+  if (!replaced) {
+    // Placeholder not found — leave doc unchanged. Estimator will see the
+    // unmodified template; this is recoverable behaviour.
+    console.warn(`SOW template missing ${PLACEHOLDER} placeholder — sending unchanged`);
+    return arrayBuf;
+  }
+
+  zip.file('word/document.xml', xml);
+  return zip.generate({ type: 'arraybuffer' });
+}
+
+// Build OOXML for a numbered-list block. Each line of `text` becomes its own
+// paragraph. We use plain numbering inline (not a Word numId list) because
+// the estimator already typed numbers like "1. ", "2. " in the textarea —
+// the simplest, most reliable rendering is to preserve them as-is.
+function buildRequirementsXml(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length === 0) return '<w:p><w:r><w:t>None</w:t></w:r></w:p>';
+  return lines.map(line =>
+    `<w:p><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`
+  ).join('');
+}
+
+function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Replace a placeholder that lives inside a <w:p>...{{X}}...</w:p> with a
+// block of <w:p> paragraphs. We split the original paragraph at the
+// placeholder, drop the placeholder text, and insert the new paragraphs
+// after closing the original paragraph.
+function replaceInsideParagraphWithBlock(xml, placeholder, blockXml) {
+  const idx = xml.indexOf(placeholder);
+  if (idx < 0) return xml;
+  // Find the enclosing <w:p>...</w:p>
+  const pStart = xml.lastIndexOf('<w:p ', idx);
+  const pStartAlt = xml.lastIndexOf('<w:p>', idx);
+  const paragraphStart = Math.max(pStart, pStartAlt);
+  const paragraphEndIdx = xml.indexOf('</w:p>', idx);
+  if (paragraphStart < 0 || paragraphEndIdx < 0) {
+    // Fallback: just substitute as text
+    return xml.replace(placeholder, blockXml);
+  }
+  const paragraphEnd = paragraphEndIdx + '</w:p>'.length;
+  // Drop the entire enclosing paragraph (which contained the placeholder)
+  // and replace it with the block. This is simpler than trying to keep the
+  // surrounding text, which is rarely useful for a placeholder paragraph.
+  return xml.slice(0, paragraphStart) + blockXml + xml.slice(paragraphEnd);
+}
+
+// Best-effort replacement when the placeholder is split across multiple
+// <w:t> runs. We walk paragraph-by-paragraph; for each, we extract the
+// concatenation of its <w:t> contents; if that concatenation contains the
+// placeholder, we rewrite the entire paragraph.
+function replaceAcrossRuns(xml, placeholder, replacement, isBlock) {
+  let replaced = false;
+  // Split xml by paragraph boundaries (<w:p ...> ... </w:p>)
+  const out = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
+    if (replaced) return paragraph; // only do first match
+    // Collect text from <w:t>...</w:t>
+    const texts = [];
+    paragraph.replace(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g, (m, t) => { texts.push(t); return m; });
+    const combined = texts.join('');
+    if (!combined.includes(placeholder)) return paragraph;
+    replaced = true;
+    if (isBlock) {
+      // Replace the entire paragraph with the block
+      return replacement;
+    } else {
+      // Single-line replacement — emit a fresh simple paragraph
+      return `<w:p><w:r><w:t xml:space="preserve">${escapeXml(combined.replace(placeholder, replacement))}</w:t></w:r></w:p>`;
+    }
+  });
+  return { xml: out, replaced };
+}
+
+
   if (!files || files.length === 0) {
     return '<p style="color:#777;font-style:italic;margin:0;">No files in drawings folder yet.</p>';
   }

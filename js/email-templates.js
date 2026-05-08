@@ -15,8 +15,6 @@ import { showToast, showModal, closeModal, escapeHtml } from './ui.js';
 export const DEFAULT_EMAIL_BODY =
 `Hi {firstName},
 Please find attached the SOW for {fullAddress}.
-Job-specific requirements:
-{requirements}
 Document folder: {tradiesLink}
 Please respond by {respondByDate}.
 Below is list of current file snapshot:
