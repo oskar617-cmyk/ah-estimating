@@ -710,6 +710,7 @@
     background: var(--bg-3);
     border-bottom: 1px solid var(--line);
     gap: 12px;
+    flex-wrap: wrap;
   }
   .rfq-group-title {
     font-weight: 600; font-size: 15px;
@@ -723,6 +724,39 @@
     margin-top: 4px;
     padding-top: 8px;
   }
+
+  /* Trade-level rollup */
+  .trade-rollup {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .rollup-sep { color: var(--text-3); margin: 0 2px; }
+  .rollup-pill {
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .rollup-sent       { background: var(--amber-bg); color: var(--amber); }
+  .rollup-quoted     { background: var(--green-bg); color: var(--green); }
+  .rollup-question   { background: var(--purple-bg); color: var(--purple); }
+  .rollup-suspicious { background: var(--red-bg); color: var(--red); }
+  .rollup-given-up   { background: var(--bg-3); color: var(--text-3); }
+  .rollup-picked     { background: var(--blue-bg); color: var(--blue); }
+
+  /* Per-RFQ mixed badge cluster */
+  .rfq-mixed-badges {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-left: auto;
+  }
+  .rfq-mixed-badges .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+
   .activity-item {
     display: flex; gap: 12px;
     padding: 10px 16px;
@@ -735,10 +769,33 @@
     line-height: 1.4;
   }
   .activity-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
+  .activity-title-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   .activity-meta {
     font-size: 12px; color: var(--text-3); margin-top: 2px;
   }
   .activity-system { opacity: 0.8; }
+
+  /* RFQ delete button — shown only to admins */
+  .rfq-delete-btn {
+    width: 28px; height: 28px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-3);
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+    opacity: 0.5;
+  }
+  .activity-item:hover .rfq-delete-btn { opacity: 0.9; }
+  .rfq-delete-btn:hover {
+    background: var(--red-bg);
+    color: var(--red);
+    opacity: 1;
+  }
 
   /* ====== EMAIL TEMPLATES TAB ====== */
   .tpl-layout {
