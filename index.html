@@ -1220,6 +1220,7 @@
         <div class="settings-tab active" data-tab="catalog">Trades / Suppliers</div>
         <div class="settings-tab" data-tab="email-templates">Email Templates</div>
         <div class="settings-tab" data-tab="signature">Email Signature</div>
+        <div class="settings-tab" data-tab="ai-tuning">AI Tuning</div>
         <div class="settings-tab" data-tab="users">Users</div>
       </div>
 
@@ -1275,6 +1276,27 @@
           <div class="form-hint">Plain text recommended. Variables: {senderName}, {senderTitle}, {senderEmail}.</div>
         </div>
         <button class="btn-primary" onclick="saveSignature()">Save Signature</button>
+      </div>
+
+      <!-- AI Tuning section -->
+      <div class="settings-section" id="settings-ai-tuning">
+        <div class="info-card mb-12">
+          <div style="font-weight: 600;">AI Tuning Export</div>
+          <div class="text-muted text-small mt-4">
+            Export real Gemini classifications since your last export, ready to paste into the
+            <strong>AH Est Email Classifier</strong> chat for analysis. The classifier chat will
+            return an updated <code>worker.js</code> you can deploy via GitHub.
+          </div>
+        </div>
+        <div id="ai-tuning-status" class="info-card mb-12"></div>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-export-ai-tuning">Export For AI Tuning</button>
+          <button class="btn-secondary small" id="btn-copy-starter-prompt" title="Copy the starter prompt to paste into the new chat">Copy Starter Prompt</button>
+          <button class="btn-secondary small" id="btn-reset-export-cursor">Reset Export Cursor…</button>
+        </div>
+        <div class="text-small text-muted mt-12">
+          <strong>Tip:</strong> after exporting, start a new chat called "AH Est Email Classifier" inside the same Anthropic Project. Paste the starter prompt and attach the downloaded <code>.md</code> file.
+        </div>
       </div>
 
       <!-- Users section -->

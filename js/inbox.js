@@ -15,6 +15,7 @@ import { getToken } from './auth.js';
 import { buildIndex, matchMessageToRfq, clearTrackerCache } from './reply-matcher.js';
 import { extractPdfText, emailBodyToPdfBytes } from './pdf-tools.js';
 import { classifyEmail, extractQuoteAmount, summarizeFilename } from './classification.js';
+import { logDecision } from './decision-log.js';
 import { fileMessageToJob, buildOfficeFolderName, clearFolderIdCache } from './mail-filer.js';
 import { addNotification } from './notifications.js';
 import { logAudit, readTracker, writeTracker } from './audit.js';
@@ -153,18 +154,30 @@ async function fullyProcessMatched(msg, match) {
   // determined this email belongs to this RFQ, so the classifier's job is
   // to label what KIND of reply it is, not whether it's related.
   let classification = 'Question', confidence = 0;
+  let classifyDecisionId = null;
+  const classifyInput = {
+    subject: msg.subject,
+    fromName: ((msg.from || {}).emailAddress || {}).name || '',
+    fromEmail: ((msg.from || {}).emailAddress || {}).address || '',
+    bodyText,
+    rfqCategory: ref.rfqCategory || '',
+    jobAddress: (await deriveAddress(ref.jobFolder)) || '',
+    supplierCompany: ref.supplierCompany || ''
+  };
   try {
-    const c = await classifyEmail({
-      subject: msg.subject,
-      fromName: ((msg.from || {}).emailAddress || {}).name || '',
-      fromEmail: ((msg.from || {}).emailAddress || {}).address || '',
-      bodyText,
-      rfqCategory: ref.rfqCategory || '',
-      jobAddress: (await deriveAddress(ref.jobFolder)) || '',
-      supplierCompany: ref.supplierCompany || ''
-    });
+    const c = await classifyEmail(classifyInput);
     classification = c.classification || 'Question';
     confidence = c.confidence || 0;
+    classifyDecisionId = logDecision({
+      task: 'classify',
+      input: classifyInput,
+      output: { classification, confidence },
+      messageId: msg.id,
+      jobFolder: ref.jobFolder,
+      rfqId: ref.rfqId,
+      supplierId: ref.supplierId,
+      notificationId: msg.id  // notification id == message id by design
+    });
   } catch (err) {
     console.warn('Classification failed:', err);
   }
@@ -207,23 +220,43 @@ async function fullyProcessMatched(msg, match) {
   let extractedAmount = null;
   let extractedCurrency = 'AUD';
   let pendingEntry = null;
+  let amountDecisionId = null;
   if (classification === 'Quote') {
     let attachmentText = '';
     // Use the first PDF's text (already extracted during save) if we kept it
     if (savedAttachments.length && savedAttachments[0].text) {
       attachmentText = savedAttachments[0].text;
     }
+    const amountInput = { subject: msg.subject, bodyText, attachmentText };
     try {
-      const ext = await extractQuoteAmount({ subject: msg.subject, bodyText, attachmentText });
+      const ext = await extractQuoteAmount(amountInput);
       if (ext && ext.amount != null) {
         extractedAmount = Number(ext.amount);
         extractedCurrency = ext.currency || 'AUD';
       }
+      amountDecisionId = logDecision({
+        task: 'extractAmount',
+        input: amountInput,
+        output: { amount: extractedAmount, currency: extractedCurrency, notes: (ext && ext.notes) || '' },
+        messageId: msg.id,
+        jobFolder: ref.jobFolder,
+        rfqId: ref.rfqId,
+        supplierId: ref.supplierId,
+        notificationId: msg.id
+      });
     } catch (err) { console.warn('Amount extraction failed:', err); }
 
     // Write to budget Excel and create a pendingReview entry
     try {
       pendingEntry = await writeQuoteToBudget(ref, savedAttachments, extractedAmount);
+      // Stash the decision id on the pending review so confirm/edit/reject
+      // can later record the user's reaction back into the decision log.
+      if (pendingEntry && amountDecisionId) {
+        pendingEntry.amountDecisionId = amountDecisionId;
+      }
+      if (pendingEntry && classifyDecisionId) {
+        pendingEntry.classifyDecisionId = classifyDecisionId;
+      }
     } catch (err) {
       console.warn('Budget write failed:', err);
     }
@@ -304,9 +337,19 @@ async function saveAttachments(messageId, ref) {
       let pdfText = '';
       try { pdfText = await extractPdfText(bytes); } catch (e) { /* extraction can fail */ }
       let summary = '';
+      const summaryInput = { originalName: att.name, attachmentText: pdfText };
       try {
-        const s = await summarizeFilename({ originalName: att.name, attachmentText: pdfText });
+        const s = await summarizeFilename(summaryInput);
         summary = (s && s.summary) || '';
+        logDecision({
+          task: 'summarizeFilename',
+          input: summaryInput,
+          output: { summary },
+          messageId,
+          jobFolder: ref.jobFolder,
+          rfqId: ref.rfqId,
+          supplierId: ref.supplierId
+        });
       } catch (e) { /* fallback to original */ }
       const savedName = buildAttachmentFilename({
         trade: ref.rfqCategory,

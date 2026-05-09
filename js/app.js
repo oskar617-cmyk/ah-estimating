@@ -23,6 +23,8 @@ import './pdf-tools.js';
 import './classification.js';
 import './mail-filer.js';
 import './pending-review.js';
+import './decision-log.js';
+import './decision-export.js';
 
 // Wire up the post-sign-in callback (auth doesn't import jobs directly to
 // keep auth as a leaf module).

@@ -35,6 +35,14 @@ export const CONFIG = {
   // browsing the Quote folder aren't tempted to edit/delete it.
   trackerSubfolder: '_app',
   trackerFilename: 'rfq-tracker.json',
+  // Classifier decision log (Phase 4c-iv-tune-2). Lives in the hidden _app
+  // subfolder of Common Docs so site-manager users don't see it. One file
+  // per month for predictable size; the cursor file remembers the last
+  // export point.
+  decisionLogPath: 'AAA Quote Common Docs/_app',
+  decisionLogPrefix: 'classifier-decisions-',  // e.g. classifier-decisions-2026-05.json
+  decisionCursorFilename: 'classifier-decisions-cursor.json',
+  decisionExportMaxEntries: 500,
   // Sent Items lookup tuning (Phase 4c-iv).
   // Exchange indexing can lag a few seconds after sendMail. We retry with
   // backoff so most lookups succeed without manual fix.

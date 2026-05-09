@@ -28,6 +28,7 @@ import {
 } from './graph.js';
 import { getToken } from './auth.js';
 import { logAudit, writeTracker } from './audit.js';
+import { recordReaction } from './decision-log.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 
 // Render section into the job detail screen. Caller is jobs.js.
@@ -130,6 +131,14 @@ async function doConfirm(entry, jobFolderName, tracker, onChange) {
     await logAudit('QUOTE_CONFIRMED', `${entry.supplierCompany} / ${entry.rfqCategory}`, {
       amount: entry.amount, budgetRowNo: entry.budgetRowNo
     });
+    // Record the reaction against the originating Gemini decisions so the
+    // export later shows "Gemini said X, user confirmed".
+    if (entry.classifyDecisionId) {
+      recordReaction(entry.classifyDecisionId, 'confirmed').catch(e => console.warn('recordReaction(classify):', e));
+    }
+    if (entry.amountDecisionId) {
+      recordReaction(entry.amountDecisionId, 'confirmed').catch(e => console.warn('recordReaction(amount):', e));
+    }
     showToast('Confirmed', 'success');
     if (onChange) onChange();
   } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
@@ -147,6 +156,10 @@ async function doEdit(entry, jobFolderName, tracker, onChange) {
       <input id="edit-amount" type="number" step="0.01" value="${entry.amount != null ? entry.amount : ''}" />
       <div class="form-hint">The budget Excel will be re-written with this amount.</div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Why edited? (Optional, helps tune AI)</label>
+      <input id="edit-why" type="text" placeholder="e.g. AI missed the GST line" />
+    </div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" id="edit-amount-save">Save</button>
@@ -154,8 +167,10 @@ async function doEdit(entry, jobFolderName, tracker, onChange) {
   `);
   document.getElementById('edit-amount-save').addEventListener('click', async () => {
     const v = parseFloat(document.getElementById('edit-amount').value);
+    const why = (document.getElementById('edit-why').value || '').trim();
     if (isNaN(v) || v < 0) { showToast('Invalid Amount', 'error'); return; }
     try {
+      const originalAmount = entry.amount;
       await rewriteBudgetCell(jobFolderName, entry, v);
       entry.amount = v;
       entry.status = 'confirmed';
@@ -166,6 +181,15 @@ async function doEdit(entry, jobFolderName, tracker, onChange) {
       await logAudit('QUOTE_EDITED', `${entry.supplierCompany} / ${entry.rfqCategory}`, {
         amount: v, budgetRowNo: entry.budgetRowNo
       });
+      // Record both reactions: the amount was edited, classification was implicitly confirmed.
+      if (entry.amountDecisionId) {
+        recordReaction(entry.amountDecisionId, 'edited',
+          { from: originalAmount, to: v }, why || null
+        ).catch(e => console.warn('recordReaction(amount/edited):', e));
+      }
+      if (entry.classifyDecisionId) {
+        recordReaction(entry.classifyDecisionId, 'confirmed').catch(e => console.warn('recordReaction(classify):', e));
+      }
       closeModal();
       showToast('Saved', 'success');
       if (onChange) onChange();
@@ -189,6 +213,13 @@ async function doReject(entry, jobFolderName, tracker, onChange) {
     await logAudit('QUOTE_REJECTED', `${entry.supplierCompany} / ${entry.rfqCategory}`, {
       budgetRowNo: entry.budgetRowNo
     });
+    // Reject = both the classify and the amount were wrong.
+    if (entry.classifyDecisionId) {
+      recordReaction(entry.classifyDecisionId, 'rejected').catch(e => console.warn('recordReaction(classify):', e));
+    }
+    if (entry.amountDecisionId) {
+      recordReaction(entry.amountDecisionId, 'rejected').catch(e => console.warn('recordReaction(amount):', e));
+    }
     showToast('Rejected', 'success');
     if (onChange) onChange();
   } catch (err) { console.error(err); showToast('Save Failed', 'error'); }
