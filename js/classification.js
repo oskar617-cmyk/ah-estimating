@@ -41,12 +41,15 @@ function stubFallback(task, payload) {
 
 // Classify an email. Returns one of:
 //   Quote / Question / Suspicious / Out-of-Office / Decline / Unrelated
-export async function classifyEmail({ subject, fromName, fromEmail, bodyText }) {
+export async function classifyEmail({ subject, fromName, fromEmail, bodyText, rfqCategory, jobAddress, supplierCompany }) {
   const result = await callClassifier('classify', {
     subject: subject || '',
     fromName: fromName || '',
     fromEmail: fromEmail || '',
-    bodyText: (bodyText || '').slice(0, 5000)  // cap to keep token cost bounded
+    bodyText: (bodyText || '').slice(0, 5000),  // cap to keep token cost bounded
+    rfqCategory: rfqCategory || '',
+    jobAddress: jobAddress || '',
+    supplierCompany: supplierCompany || ''
   });
   return result || { classification: 'Question', confidence: 0 };
 }

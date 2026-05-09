@@ -147,14 +147,21 @@ async function fullyProcessMatched(msg, match) {
     : escapeAsPre(full.body && full.body.content);
   const bodyText = htmlToPlainText(bodyHtml);
 
-  // Classify
+  // Classify. Pass the matched RFQ context so Gemini has the right frame
+  // of reference — without it, a reply about "concrete works" may look
+  // ambiguous if the RFQ was actually for Balustrade. The matcher already
+  // determined this email belongs to this RFQ, so the classifier's job is
+  // to label what KIND of reply it is, not whether it's related.
   let classification = 'Question', confidence = 0;
   try {
     const c = await classifyEmail({
       subject: msg.subject,
       fromName: ((msg.from || {}).emailAddress || {}).name || '',
       fromEmail: ((msg.from || {}).emailAddress || {}).address || '',
-      bodyText
+      bodyText,
+      rfqCategory: ref.rfqCategory || '',
+      jobAddress: (await deriveAddress(ref.jobFolder)) || '',
+      supplierCompany: ref.supplierCompany || ''
     });
     classification = c.classification || 'Question';
     confidence = c.confidence || 0;
