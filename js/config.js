@@ -44,10 +44,9 @@ export const CONFIG = {
   // Inbox poller (Phase 4c-iv)
   inboxPollIntervalMs: 30000,            // 30s while app is open
   inboxLookbackMinutesOnFirstPoll: 1440, // catch up the last 24h on first poll
-  // Azure Function endpoint for Gemini classification proxy. Holds the
-  // Gemini API key server-side so it never ships to the browser. User must
-  // create the Function and paste the URL here before classification works.
-  classifierUrl: '',  // e.g. 'https://ah-estimating-fn.azurewebsites.net/api/classify'
+  // Classification proxy. Holds the Gemini API key server-side so it never
+  // ships to the browser. We use a Cloudflare Worker on the free tier.
+  classifierUrl: 'https://ah-estimating-classifier.oskar617.workers.dev',
   scopes: [
     'User.Read', 'User.ReadBasic.All',
     'Files.ReadWrite.All', 'Sites.ReadWrite.All',
