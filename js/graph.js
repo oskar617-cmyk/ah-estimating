@@ -258,35 +258,33 @@ export async function listFilenames(siteId, folderPath) {
 //   { id, internetMessageId, conversationId, sentDateTime } or null.
 //
 // Used right after /me/sendMail (which doesn't return the message id).
-// Strategy: search Sent Items by `toRecipients` filter, take the most
-// recent message sent to that recipient at or after `sinceIso`. We don't
-// require exact subject equality because Exchange may normalise whitespace
-// or change subject formatting between accept and store. If multiple sends
-// to the same recipient happened in the same second, sentDateTime + the
-// recipient-only match is still good enough — we only ever care about
-// the latest.
+// Strategy: fetch the most recent ~25 messages from Sent Items, then
+// filter client-side. We can't use $filter on toRecipients/emailAddress
+// on this endpoint — Graph rejects it as an invalid filter node — and
+// since we look up within seconds of sending, the message we want will
+// always be near the top.
 export async function findSentMessage(subject, recipientEmail, sinceIso) {
-  const recipientLower = (recipientEmail || '').toLowerCase().replace(/'/g, "''");
-  const filter = `toRecipients/any(r:r/emailAddress/address eq '${recipientLower}')`;
+  const recipientLower = (recipientEmail || '').toLowerCase();
   const url =
     `/me/mailFolders/SentItems/messages` +
-    `?$filter=${encodeURIComponent(filter)}` +
-    `&$orderby=sentDateTime desc` +
-    `&$top=10` +
-    `&$select=id,subject,internetMessageId,conversationId,sentDateTime`;
+    `?$orderby=sentDateTime desc` +
+    `&$top=25` +
+    `&$select=id,subject,toRecipients,internetMessageId,conversationId,sentDateTime`;
   const result = await graphFetch(url);
   const messages = result.value || [];
   const since = sinceIso ? new Date(sinceIso).getTime() - 30000 : 0; // 30s back-buffer
-  // Pick the most recent send at or after the lookup window. If subject
-  // was passed and we can confirm it matches verbatim, prefer that —
-  // otherwise just take the newest.
-  const candidates = messages.filter(m =>
-    new Date(m.sentDateTime).getTime() >= since
-  );
+  // Filter to messages addressed to this recipient and sent at/after sinceIso
+  const candidates = messages.filter(m => {
+    const sentMs = new Date(m.sentDateTime).getTime();
+    if (sentMs < since) return false;
+    const tos = (m.toRecipients || []).map(r => ((r.emailAddress || {}).address || '').toLowerCase());
+    return tos.includes(recipientLower);
+  });
   if (candidates.length === 0) {
-    console.warn(`[Sent Items] no candidates for ${recipientEmail} since ${sinceIso}; total in window: ${messages.length}`);
+    console.warn(`[Sent Items] no candidates for ${recipientEmail} since ${sinceIso}; total scanned: ${messages.length}`);
     return null;
   }
+  // Prefer exact subject match if multiple candidates exist; else newest.
   const exact = subject ? candidates.find(m => (m.subject || '').trim() === subject.trim()) : null;
   const match = exact || candidates[0];
   if (!exact && subject) {
