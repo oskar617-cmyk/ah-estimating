@@ -661,14 +661,18 @@ async function doBatchSend() {
       try {
         await new Promise(r => setTimeout(r, CONFIG.sentLookupInitialDelayMs));
         for (let attempt = 1; attempt <= CONFIG.sentLookupMaxAttempts; attempt++) {
+          console.log(`[Sent Items] attempt ${attempt}/${CONFIG.sentLookupMaxAttempts} for ${supplier.email}`);
           sentRef = await findSentMessage(snap.subject, supplier.email, sendStartedAt);
-          if (sentRef) break;
+          if (sentRef) {
+            console.log(`[Sent Items] captured for ${supplier.email}:`, sentRef.internetMessageId);
+            break;
+          }
           if (attempt < CONFIG.sentLookupMaxAttempts) {
             await new Promise(r => setTimeout(r, CONFIG.sentLookupRetryDelayMs));
           }
         }
         if (!sentRef) {
-          console.warn(`Sent Items lookup gave up for ${supplier.email} after ${CONFIG.sentLookupMaxAttempts} attempts`);
+          console.warn(`[Sent Items] gave up for ${supplier.email} after ${CONFIG.sentLookupMaxAttempts} attempts`);
         }
       } catch (lookupErr) {
         console.warn(`Could not capture sent message id for ${supplier.email}:`, lookupErr);

@@ -254,16 +254,20 @@ export async function listFilenames(siteId, folderPath) {
 
 // ---------- Mail / Inbox helpers (Phase 4c-iv) ----------
 
-// Find a recently-sent message in Sent Items by subject + recipient.
-// Returns { id, internetMessageId, conversationId } or null.
-// Used right after /me/sendMail (which doesn't return the message id) to
-// capture the headers we need for later reply-matching.
+// Find a recently-sent message in Sent Items by recipient. Returns
+//   { id, internetMessageId, conversationId, sentDateTime } or null.
+//
+// Used right after /me/sendMail (which doesn't return the message id).
+// Strategy: search Sent Items by `toRecipients` filter, take the most
+// recent message sent to that recipient at or after `sinceIso`. We don't
+// require exact subject equality because Exchange may normalise whitespace
+// or change subject formatting between accept and store. If multiple sends
+// to the same recipient happened in the same second, sentDateTime + the
+// recipient-only match is still good enough — we only ever care about
+// the latest.
 export async function findSentMessage(subject, recipientEmail, sinceIso) {
-  // Search by recipient + subject in /me/mailFolders/SentItems/messages.
-  // Microsoft Graph requires a $filter using basic comparison (no contains
-  // on subject), but we can filter by toRecipients/emailAddress/address.
-  // Newest first — most recent send for this recipient is the one we want.
-  const filter = `toRecipients/any(r:r/emailAddress/address eq '${recipientEmail.replace(/'/g, "''").toLowerCase()}')`;
+  const recipientLower = (recipientEmail || '').toLowerCase().replace(/'/g, "''");
+  const filter = `toRecipients/any(r:r/emailAddress/address eq '${recipientLower}')`;
   const url =
     `/me/mailFolders/SentItems/messages` +
     `?$filter=${encodeURIComponent(filter)}` +
@@ -272,13 +276,22 @@ export async function findSentMessage(subject, recipientEmail, sinceIso) {
     `&$select=id,subject,internetMessageId,conversationId,sentDateTime`;
   const result = await graphFetch(url);
   const messages = result.value || [];
-  // Pick the most recent one whose subject matches and was sent after sinceIso
-  const since = sinceIso ? new Date(sinceIso).getTime() : 0;
-  const match = messages.find(m =>
-    (m.subject || '').trim() === subject.trim() &&
+  const since = sinceIso ? new Date(sinceIso).getTime() - 30000 : 0; // 30s back-buffer
+  // Pick the most recent send at or after the lookup window. If subject
+  // was passed and we can confirm it matches verbatim, prefer that —
+  // otherwise just take the newest.
+  const candidates = messages.filter(m =>
     new Date(m.sentDateTime).getTime() >= since
   );
-  if (!match) return null;
+  if (candidates.length === 0) {
+    console.warn(`[Sent Items] no candidates for ${recipientEmail} since ${sinceIso}; total in window: ${messages.length}`);
+    return null;
+  }
+  const exact = subject ? candidates.find(m => (m.subject || '').trim() === subject.trim()) : null;
+  const match = exact || candidates[0];
+  if (!exact && subject) {
+    console.log(`[Sent Items] subject mismatch for ${recipientEmail}; expected="${subject}" got="${match.subject}". Falling back to newest.`);
+  }
   return {
     id: match.id,
     internetMessageId: match.internetMessageId,
