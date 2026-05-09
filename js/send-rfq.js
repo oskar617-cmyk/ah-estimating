@@ -14,7 +14,7 @@ import {
   createAnonymousReadLink, sendMail, arrayBufferToBase64,
   findSentMessage
 } from './graph.js';
-import { loadAppConfig, loadSuppliers, logAudit } from './audit.js';
+import { loadAppConfig, loadSuppliers, logAudit, readTracker, writeTracker } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 import { getTemplateForCategory, getSubjectTemplate, renderTemplate, templateToHtml, ensureTemplatesShapePersisted } from './email-templates.js';
 import { openCompanyEditor } from './companies.js';
@@ -316,8 +316,7 @@ async function buildSnapshot() {
   const tradiesShareLink = await createAnonymousReadLink(siteId, tradiesFolderPath);
 
   // Read project team CC list from rfq-tracker
-  const quotePath = `${job.folderName}/Quote`;
-  const tracker = (await readJson(siteId, quotePath, 'rfq-tracker.json')) || {};
+  const tracker = (await readTracker(job.folderName)) || {};
   const projectTeamCC = tracker.projectTeamEmails || [];
 
   // SOW: try to read [Category].docx from SOW Templates folder.
@@ -657,11 +656,20 @@ async function doBatchSend() {
       // Capture the internetMessageId from Sent Items so replies can be
       // matched via In-Reply-To header (Tier 1 of the matching strategy).
       // /me/sendMail returns 202 with no body, so we have to look it up.
-      // Small delay gives Exchange a moment to index the sent message.
+      // Exchange indexing lags a few seconds, so we retry with backoff.
       let sentRef = null;
       try {
-        await new Promise(r => setTimeout(r, 1500));
-        sentRef = await findSentMessage(snap.subject, supplier.email, sendStartedAt);
+        await new Promise(r => setTimeout(r, CONFIG.sentLookupInitialDelayMs));
+        for (let attempt = 1; attempt <= CONFIG.sentLookupMaxAttempts; attempt++) {
+          sentRef = await findSentMessage(snap.subject, supplier.email, sendStartedAt);
+          if (sentRef) break;
+          if (attempt < CONFIG.sentLookupMaxAttempts) {
+            await new Promise(r => setTimeout(r, CONFIG.sentLookupRetryDelayMs));
+          }
+        }
+        if (!sentRef) {
+          console.warn(`Sent Items lookup gave up for ${supplier.email} after ${CONFIG.sentLookupMaxAttempts} attempts`);
+        }
       } catch (lookupErr) {
         console.warn(`Could not capture sent message id for ${supplier.email}:`, lookupErr);
       }
@@ -710,9 +718,7 @@ async function doBatchSend() {
 }
 
 async function persistRfqEntry(rfqId, snap, sentEntries) {
-  const siteId = await getAhSiteId();
-  const quotePath = `${snap.job.folderName}/Quote`;
-  const tracker = (await readJson(siteId, quotePath, 'rfq-tracker.json')) || {
+  const tracker = (await readTracker(snap.job.folderName)) || {
     version: 1,
     jobCode: snap.job.jobCode,
     jobName: snap.job.jobName,
@@ -743,7 +749,7 @@ async function persistRfqEntry(rfqId, snap, sentEntries) {
     pickedSupplierId: null,
     status: 'open' // 'open' | 'given_up' | 'picked'
   });
-  await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
+  await writeTracker(snap.job.folderName, tracker);
 }
 
 // --------- Step 5: Summary ---------

@@ -27,7 +27,7 @@ import {
   getAhSiteId, encodeUriPath, readJson, uploadJson, readXlsx
 } from './graph.js';
 import { getToken } from './auth.js';
-import { logAudit } from './audit.js';
+import { logAudit, writeTracker } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 
 // Render section into the job detail screen. Caller is jobs.js.
@@ -195,8 +195,7 @@ async function doReject(entry, jobFolderName, tracker, onChange) {
 }
 
 async function persistTracker(jobFolderName, tracker) {
-  const siteId = await getAhSiteId();
-  await uploadJson(siteId, `${jobFolderName}/Quote`, 'rfq-tracker.json', tracker);
+  await writeTracker(jobFolderName, tracker);
 }
 
 // Re-write the budget Excel cell. If amount is null, the slot is cleared.

@@ -9,7 +9,7 @@ import {
   graphFetch, getAhSiteId, getAhOfficeId, encodeUriPath,
   ensureFolder, copyFile, uploadJson
 } from './graph.js';
-import { logAudit } from './audit.js';
+import { logAudit, writeTracker } from './audit.js';
 import { showToast, showModal, closeModal, confirmModal, escapeHtml } from './ui.js';
 import { loadJobs } from './jobs.js';
 
@@ -175,9 +175,8 @@ async function runJobCreation(code, name, address) {
     await copyFile(siteId, `${CONFIG.commonDocsPath}/${CONFIG.budgetTemplateName}`, `${ahSiteFolder}/Quote`, budgetTargetName);
   }});
   steps.push({ id: 's-tracker', label: 'Initialise RFQ tracker', run: async () => {
-    const siteId = await getAhSiteId();
     const tracker = { version: 1, jobCode: code, jobName: name, address, projectTeamEmails: state.projectTeamEmails.map(c => c.email), rfqs: [], createdAt: new Date().toISOString(), createdBy: state.currentUserEmail };
-    await uploadJson(siteId, `${ahSiteFolder}/Quote`, 'rfq-tracker.json', tracker);
+    await writeTracker(ahSiteFolder, tracker);
   }});
   steps.push({ id: 's-ahoffice-root', label: `Create AH Office folder: ${ahOfficeFolder}`, run: async () => { const officeId = await getAhOfficeId(); await ensureFolder(officeId, '', ahOfficeFolder); }});
   for (const sub of CONFIG.ahOfficeSubfolders) {

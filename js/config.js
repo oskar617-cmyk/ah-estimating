@@ -31,6 +31,16 @@ export const CONFIG = {
   senderEmail: 'est@auhs.com.au', // only this email can send RFQs
   defaultDaysToRespond: 5,
   defaultDaysToFollowup: 3,
+  // Tracker JSON lives inside an _app sub-folder so site manager users
+  // browsing the Quote folder aren't tempted to edit/delete it.
+  trackerSubfolder: '_app',
+  trackerFilename: 'rfq-tracker.json',
+  // Sent Items lookup tuning (Phase 4c-iv).
+  // Exchange indexing can lag a few seconds after sendMail. We retry with
+  // backoff so most lookups succeed without manual fix.
+  sentLookupInitialDelayMs: 3000,
+  sentLookupRetryDelayMs: 2500,
+  sentLookupMaxAttempts: 4,
   // Inbox poller (Phase 4c-iv)
   inboxPollIntervalMs: 30000,            // 30s while app is open
   inboxLookbackMinutesOnFirstPoll: 1440, // catch up the last 24h on first poll

@@ -5,7 +5,7 @@ import { CONFIG } from './config.js';
 import { state } from './state.js';
 import { navigate, setOnReturnToJobs } from './nav.js';
 import { graphFetch, getAhSiteId, encodeUriPath, readJson, uploadJson } from './graph.js';
-import { logAudit } from './audit.js';
+import { logAudit, readTracker, writeTracker } from './audit.js';
 import { showToast, escapeHtml } from './ui.js';
 import { renderPendingReviewSection, attachPendingReviewHandlers } from './pending-review.js';
 
@@ -72,14 +72,14 @@ export async function loadJobDetail() {
   try {
     const siteId = await getAhSiteId();
     const quotePath = `${state.currentJob.folderName}/Quote`;
-    let tracker = await readJson(siteId, quotePath, 'rfq-tracker.json');
+    let tracker = await readTracker(state.currentJob.folderName);
     if (!tracker) {
       const quoteFolder = await graphFetch(
         `/sites/${siteId}/drive/root:/${encodeUriPath(quotePath)}:/children?$top=200&$select=id,name,file`
       ).catch(err => err.status === 404 ? { value: [] } : Promise.reject(err));
       const existingPdfs = (quoteFolder.value || []).filter(it => it.file && /\.pdf$/i.test(it.name));
       if (existingPdfs.length > 0) { renderMigrationPrompt(existingPdfs.length); return; }
-      else { tracker = createEmptyTracker(); await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker); }
+      else { tracker = createEmptyTracker(); await writeTracker(state.currentJob.folderName, tracker); }
     }
     renderJobDetail(tracker);
   } catch (err) {
@@ -125,7 +125,7 @@ export async function skipMigration() {
     const siteId = await getAhSiteId();
     const quotePath = `${state.currentJob.folderName}/Quote`;
     const tracker = createEmptyTracker(); tracker.migrationSkipped = true;
-    await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
+    await writeTracker(state.currentJob.folderName, tracker);
     await logAudit('JOB_TRACKER_INITIALISED', state.currentJob.folderName, { migrated: false });
     renderJobDetail(tracker);
     showToast('Tracker Initialised', 'success');
@@ -153,7 +153,7 @@ export async function migrateExistingQuotes() {
       }
     }
     tracker.migratedQuotes = parsed; tracker.needsReview = needsReview;
-    await uploadJson(siteId, quotePath, 'rfq-tracker.json', tracker);
+    await writeTracker(state.currentJob.folderName, tracker);
     await logAudit('JOB_TRACKER_INITIALISED', state.currentJob.folderName, { migrated: true, parsedCount: parsed.length, needsReviewCount: needsReview.length });
     renderJobDetail(tracker);
     showToast(`Migrated ${parsed.length} Quote${parsed.length === 1 ? '' : 's'}`, 'success');

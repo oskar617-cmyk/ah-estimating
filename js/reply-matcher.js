@@ -16,9 +16,10 @@
 import { CONFIG } from './config.js';
 import { state } from './state.js';
 import {
-  graphFetch, getAhSiteId, encodeUriPath, readJson,
+  graphFetch, getAhSiteId, encodeUriPath,
   listMessageAttachments, getAttachmentBytes
 } from './graph.js';
+import { readTracker } from './audit.js';
 import { extractPdfText } from './pdf-tools.js';
 
 // Helper: list all job folders in AH Site Documents that match the pattern.
@@ -40,8 +41,7 @@ async function loadTrackerCached(jobFolderName) {
   if (state.jobTrackerCache.has(jobFolderName)) {
     return state.jobTrackerCache.get(jobFolderName);
   }
-  const siteId = await getAhSiteId();
-  const tracker = await readJson(siteId, `${jobFolderName}/Quote`, 'rfq-tracker.json');
+  const tracker = await readTracker(jobFolderName);
   state.jobTrackerCache.set(jobFolderName, tracker);
   return tracker;
 }

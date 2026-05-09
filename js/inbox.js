@@ -17,7 +17,7 @@ import { extractPdfText, emailBodyToPdfBytes } from './pdf-tools.js';
 import { classifyEmail, extractQuoteAmount, summarizeFilename } from './classification.js';
 import { fileMessageToJob, buildOfficeFolderName, clearFolderIdCache } from './mail-filer.js';
 import { addNotification } from './notifications.js';
-import { logAudit } from './audit.js';
+import { logAudit, readTracker, writeTracker } from './audit.js';
 
 // ----- Public boot/teardown -----
 
@@ -505,9 +505,7 @@ async function writeQuoteToBudget(ref, savedAttachments, amount) {
 // ----- Tracker update -----
 
 async function appendReplyToTracker(ref, replyEntry, pendingReview) {
-  const siteId = await getAhSiteId();
-  const path = `${ref.jobFolder}/Quote`;
-  const tracker = await readJson(siteId, path, 'rfq-tracker.json');
+  const tracker = await readTracker(ref.jobFolder);
   if (!tracker) return;
   if (!Array.isArray(tracker.pendingReviews)) tracker.pendingReviews = [];
   if (pendingReview) tracker.pendingReviews.push(pendingReview);
@@ -519,7 +517,7 @@ async function appendReplyToTracker(ref, replyEntry, pendingReview) {
       sup.replies.push(replyEntry);
     }
   }
-  await uploadJson(siteId, path, 'rfq-tracker.json', tracker);
+  await writeTracker(ref.jobFolder, tracker);
 }
 
 // Lookup the address from the AH Site folder name (parses the folder pattern)
@@ -553,8 +551,7 @@ export async function listAllOpenRfqs() {
 export async function processNotificationManualMatch(messageId, key) {
   const [jobFolder, rfqId, supplierId] = key.split('|');
   // Load tracker and find the supplier
-  const siteId = await getAhSiteId();
-  const tracker = await readJson(siteId, `${jobFolder}/Quote`, 'rfq-tracker.json');
+  const tracker = await readTracker(jobFolder);
   if (!tracker) throw new Error('Tracker not found');
   const rfq = (tracker.rfqs || []).find(r => r.id === rfqId);
   if (!rfq) throw new Error('RFQ not found');
